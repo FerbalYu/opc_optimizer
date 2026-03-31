@@ -1,0 +1,10 @@
+langchain-core>=0.1.40
+langgraph>=0.0.30
+litellm>=1.34.0
+pydantic>=2.6.0
+python-dotenv>=1.0.1
+websockets>=12.0
+
+# Optional: OpenTelemetry tracing (install for --web-ui trace support)
+# pip install opentelemetry-api opentelemetry-sdk
+# pip install opentelemetry-exporter-otlp-proto-grpc  # For OTLP export

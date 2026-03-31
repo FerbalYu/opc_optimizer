@@ -1,0 +1,2307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPC Optimizer — Minecraft 3D Monitor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "Cascadia Mono", "Sarasa Mono SC", "JetBrains Mono", "Microsoft YaHei UI", "Consolas", monospace;
+  --bg-primary: #1a1a2e;
+  --bg-panel: #0d1117;
+  --bg-card: #161b22;
+  --border: #30363d;
+  --border-light: #21262d;
+  --text-primary: #eee;
+  --text-secondary: #8b949e;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-orange: #f0883e;
+  --accent-purple: #bc8cff;
+  --accent-teal: #39d2c0;
+  --accent-red: #f85149;
+  --sky: #87ceeb;
+}
+[data-theme='light'] {
+  --bg-primary: #f0f3f6;
+  --bg-panel: #ffffff;
+  --bg-card: #f6f8fa;
+  --border: #d0d7de;
+  --border-light: #e1e4e8;
+  --text-primary: #1f2328;
+  --text-secondary: #656d76;
+  --sky: #b8dff8;
+}
+body { 
+  background: var(--bg-primary); 
+  color: var(--text-primary); 
+  font-family: var(--font-ui);
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ─── Layout ─── */
+#container { display: flex; height: 100vh; }
+#scene-wrap { flex: 1; position: relative; }
+#canvas3d { width: 100%; height: 100%; display: block; }
+
+/* ─── Right Panel ─── */
+#right-panel {
+  width: 380px;
+  background: var(--bg-panel);
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Top Bar ─── */
+#top-bar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 56px;
+  background: linear-gradient(180deg, rgba(13,17,23,0.95), rgba(13,17,23,0.7));
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 16px;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+}
+#top-bar .title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #58a6ff;
+  text-shadow: 0 0 10px rgba(88,166,255,0.5);
+}
+#top-bar .node-name {
+  font-size: 14px;
+  color: #f0883e;
+  padding: 4px 12px;
+  background: rgba(240,136,62,0.15);
+  border: 1px solid rgba(240,136,62,0.3);
+  border-radius: 6px;
+}
+#top-bar .round-info {
+  font-size: 13px;
+  color: #8b949e;
+}
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #3fb950;
+  box-shadow: 0 0 8px rgba(63,185,80,0.6);
+  animation: pulse 2s infinite;
+}
+.status-dot.error { background: #f85149; box-shadow: 0 0 8px rgba(248,81,73,0.6); }
+.status-dot.idle { background: #8b949e; box-shadow: none; animation: none; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* ─── Progress Bar ─── */
+#progress-wrap {
+  flex: 1;
+  max-width: 200px;
+  height: 8px;
+  background: #21262d;
+  border-radius: 4px;
+  overflow: hidden;
+}
+#progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #58a6ff, #3fb950);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+/* Task Strip */
+#task-strip {
+  position: absolute;
+  top: 56px;
+  left: 0;
+  right: 0;
+  min-height: 52px;
+  padding: 8px 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: linear-gradient(180deg, rgba(13,17,23,0.78), rgba(13,17,23,0.45));
+  backdrop-filter: blur(8px);
+  z-index: 9;
+}
+.task-chip {
+  flex: 0 0 auto;
+  min-width: 170px;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: rgba(22,27,34,0.92);
+  cursor: pointer;
+}
+.task-chip:hover { border-color: var(--accent-blue); }
+.task-chip .task-file { font-size: 10px; color: var(--accent-blue); margin-bottom: 4px; }
+.task-chip .task-title { font-size: 11px; color: var(--text-primary); line-height: 1.4; }
+.task-chip.pending { border-color: var(--accent-orange); }
+.task-chip.approved { border-color: var(--accent-green); }
+.task-chip.rejected { opacity: 0.55; }
+.task-strip-empty { font-size: 11px; color: var(--text-secondary); }
+
+/* Task Review / Detail Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  background: rgba(0,0,0,0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.visible { display: flex; }
+.modal-card {
+  width: min(920px, calc(100vw - 48px));
+  max-height: 84vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+}
+.modal-card h3 { font-size: 15px; margin-bottom: 10px; }
+.modal-sub { color: var(--text-secondary); font-size: 11px; margin-bottom: 12px; }
+.review-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 14px; }
+.review-list { display: flex; flex-direction: column; gap: 8px; }
+.review-item {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-card);
+  cursor: pointer;
+}
+.review-item.active { border-color: var(--accent-blue); }
+.review-item-title { font-size: 12px; color: var(--text-primary); line-height: 1.4; }
+.review-item-file { font-size: 10px; color: var(--accent-blue); margin-top: 4px; }
+.review-detail { min-width: 0; border: 1px solid var(--border-light); border-radius: 8px; padding: 12px; background: var(--bg-card); }
+.review-detail pre { width: 100%; max-height: min(46vh, 420px); overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.65; color: var(--text-primary); font-family: var(--font-ui); }
+.review-checks { margin-top: 10px; font-size: 11px; color: var(--text-secondary); }
+.review-checks li { margin-left: 18px; margin-bottom: 4px; }
+.modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.modal-actions textarea {
+  flex: 1;
+  min-height: 64px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 10px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+.action-buttons { display: flex; gap: 8px; align-items: flex-end; }
+.action-buttons button {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+.btn-approve { background: var(--accent-green); color: #fff; }
+.btn-replan { background: var(--accent-orange); color: #fff; }
+.btn-close { background: var(--border); color: var(--text-primary); }
+
+/* ─── Tab Navigation ─── */
+#tab-nav {
+  display: flex;
+  border-bottom: 2px solid var(--border-light);
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px 6px;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+}
+.tab-btn:hover { color: var(--text-primary); background: rgba(88,166,255,0.05); }
+.tab-btn.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+.tab-content { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+.tab-content.active { display: flex; }
+
+/* ─── Log Panel ─── */
+#log-header {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#log-search {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-primary);
+  outline: none;
+}
+#log-search:focus { border-color: var(--accent-blue); }
+.log-filter-btns { display: flex; gap: 2px; }
+.log-filter-btn {
+  padding: 2px 6px;
+  font-size: 9px;
+  font-family: 'Courier New', monospace;
+  border: 1px solid var(--border-light);
+  background: none;
+  color: var(--text-secondary);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.log-filter-btn.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+.log-filter-btn:hover:not(.active) { border-color: var(--text-secondary); }
+#logs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+#logs::-webkit-scrollbar { width: 6px; }
+#logs::-webkit-scrollbar-track { background: transparent; }
+#logs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.log-line { padding: 2px 0; word-break: break-all; }
+.log-line.node-start { color: var(--accent-blue); }
+.log-line.node-complete { color: var(--accent-green); }
+.log-line.node-error { color: var(--accent-red); }
+.log-line.info { color: var(--text-secondary); }
+.log-line.hidden { display: none; }
+
+/* ─── Diff Viewer ─── */
+#diff-panel { padding: 0; }
+#diff-list { flex: 1; overflow-y: auto; padding: 8px 12px; }
+.diff-file {
+  margin-bottom: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.diff-file-header {
+  padding: 6px 10px;
+  background: var(--bg-card);
+  font-size: 11px;
+  color: var(--accent-blue);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.diff-file-header:hover { background: rgba(88,166,255,0.1); }
+.diff-file-body { font-size: 11px; padding: 4px 0; }
+.diff-line { padding: 1px 10px; font-family: 'Courier New', monospace; }
+.diff-line.add { background: rgba(63,185,80,0.15); color: var(--accent-green); }
+.diff-line.del { background: rgba(248,81,73,0.15); color: var(--accent-red); }
+.diff-line.ctx { color: var(--text-secondary); }
+.diff-empty { padding: 20px; text-align: center; color: var(--text-secondary); font-size: 12px; }
+
+/* ─── Round Comparison ─── */
+#rounds-panel { padding: 0; }
+#rounds-list { flex: 1; overflow-y: auto; padding: 8px 12px; }
+.round-card {
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.round-card-header {
+  padding: 8px 10px;
+  background: var(--bg-card);
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-primary);
+}
+.round-card-body {
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  font-size: 11px;
+}
+.round-stat { text-align: center; }
+.round-stat .val { font-size: 16px; font-weight: bold; }
+.round-stat .lbl { color: var(--text-secondary); font-size: 9px; }
+.round-timing-bar {
+  margin-top: 6px;
+  padding: 4px 10px;
+  display: flex;
+  gap: 2px;
+  height: 8px;
+}
+.round-timing-seg {
+  height: 100%;
+  border-radius: 2px;
+  min-width: 3px;
+}
+.rounds-empty { padding: 20px; text-align: center; color: var(--text-secondary); font-size: 12px; }
+.round-detail { display: none; padding: 8px 10px; font-size: 11px; border-top: 1px solid var(--border-light); color: var(--text-secondary); line-height: 1.6; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.round-detail.open { display: block; animation: slideDown 0.2s ease; }
+.round-card-header { cursor: pointer; }
+.round-card-header:hover { background: rgba(88,166,255,0.08); }
+@keyframes slideDown { from { max-height: 0; opacity: 0; } to { max-height: 200px; opacity: 1; } }
+
+/* ─── Stats Chart Tab (v2.3.0) ─── */
+#stats-chart-panel { padding: 12px; }
+#stats-chart-panel canvas { width: 100% !important; max-height: 180px; }
+.chart-section { margin-bottom: 12px; }
+.chart-section h5 { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; }
+.chart-empty { padding: 20px; text-align: center; color: var(--text-secondary); font-size: 12px; }
+
+/* ─── Trace Tab (v2.6.0) ─── */
+#trace-panel { padding: 0; }
+#trace-header { padding: 8px 12px; display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--border-light); }
+#trace-header button { padding: 4px 10px; font-size: 10px; font-family: var(--font-ui); border: 1px solid var(--border-light); background: none; color: var(--text-secondary); border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+#trace-header button:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+#trace-list { flex: 1; overflow-y: auto; padding: 8px 12px; }
+.trace-empty { padding: 20px; text-align: center; color: var(--text-secondary); font-size: 12px; }
+.trace-round-group { margin-bottom: 12px; }
+.trace-round-title { font-size: 12px; font-weight: bold; color: var(--accent-blue); margin-bottom: 6px; padding: 4px 0; border-bottom: 1px solid var(--border-light); }
+.trace-card { border: 1px solid var(--border-light); border-radius: 6px; margin-bottom: 6px; overflow: hidden; }
+.trace-card-header { padding: 6px 10px; background: var(--bg-card); font-size: 11px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-primary); }
+.trace-card-header:hover { background: rgba(88,166,255,0.08); }
+.trace-card-header .node-tag { padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: bold; color: #fff; }
+.trace-card-header .token-info { font-size: 9px; color: var(--text-secondary); }
+.trace-card-body { display: none; padding: 8px 10px; font-size: 11px; border-top: 1px solid var(--border-light); }
+.trace-card-body.open { display: block; animation: slideDown 0.2s ease; }
+.trace-section-label { font-size: 10px; font-weight: bold; color: var(--text-secondary); margin: 6px 0 4px; display: flex; justify-content: space-between; align-items: center; }
+.trace-section-label button { padding: 1px 6px; font-size: 9px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 3px; color: var(--text-secondary); cursor: pointer; font-family: var(--font-ui); }
+.trace-section-label button:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+.trace-prompt, .trace-response { background: var(--bg-secondary); border-radius: 4px; padding: 6px 8px; font-family: var(--font-mono); font-size: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; max-height: 250px; overflow-y: auto; color: var(--text-primary); }
+.trace-response { border-left: 3px solid var(--accent-green); }
+.trace-prompt { border-left: 3px solid var(--accent-blue); }
+
+/* ─── Download Button ─── */
+#download-report-btn { margin-top: 10px; padding: 8px 24px; background: var(--accent-blue); color: #fff; border: none; border-radius: 8px; font-size: 13px; font-family: var(--font-ui); cursor: pointer; transition: transform 0.2s; }
+#download-report-btn:hover { transform: scale(1.05); }
+
+/* ─── Diff Review Modal (v2.4.0) ─── */
+#diff-review-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; }
+#diff-review-overlay.visible { display: flex; }
+#diff-review-card { background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; width: min(760px, calc(100vw - 48px)); max-height: 80vh; overflow-y: auto; overflow-x: hidden; }
+#diff-review-card h3 { margin: 0 0 8px; font-size: 14px; color: var(--text-primary); }
+#diff-review-card .review-info { font-size: 11px; color: var(--text-secondary); margin-bottom: 12px; }
+#diff-review-card .review-info .similarity { color: var(--accent-orange); font-weight: bold; }
+#diff-review-diff { background: var(--bg-secondary); border-radius: 6px; padding: 10px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: min(48vh, 400px); overflow-y: auto; overflow-x: hidden; margin-bottom: 12px; }
+#diff-review-diff .diff-add { color: #3fb950; }
+#diff-review-diff .diff-del { color: #f85149; }
+#diff-review-diff .diff-ctx { color: #8b949e; }
+#diff-review-actions { display: flex; gap: 10px; justify-content: flex-end; }
+#diff-review-actions button { padding: 8px 20px; border: none; border-radius: 8px; font-size: 12px; cursor: pointer; font-family: var(--font-ui); }
+#btn-accept-diff { background: var(--accent-green); color: #fff; }
+#btn-reject-diff { background: #f85149; color: #fff; }
+
+/* ─── Theme Toggle ─── */
+#theme-toggle {
+  cursor: pointer;
+  font-size: 18px;
+  background: none;
+  border: none;
+  padding: 4px;
+  border-radius: 4px;
+  transition: transform 0.3s;
+}
+#theme-toggle:hover { transform: scale(1.2); }
+
+/* ─── Stats Panel ─── */
+#stats-panel {
+  border-top: 1px solid var(--border-light);
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 8px 12px;
+  text-align: center;
+}
+.stat-card .label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; }
+.stat-card .value { font-size: 18px; font-weight: bold; margin-top: 2px; }
+.stat-card .value.blue { color: var(--accent-blue); }
+.stat-card .value.green { color: var(--accent-green); }
+.stat-card .value.orange { color: var(--accent-orange); }
+.stat-card .value.purple { color: var(--accent-purple); }
+
+/* ─── Timings Bar ─── */
+#timings-panel {
+  border-top: 1px solid var(--border-light);
+  padding: 12px 16px;
+}
+#timings-panel h4 { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; }
+.timing-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+.timing-row .name { width: 60px; color: #8b949e; }
+.timing-bar-wrap {
+  flex: 1;
+  height: 12px;
+  background: #21262d;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.timing-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.timing-row .time { width: 40px; text-align: right; color: #8b949e; font-size: 10px; }
+
+/* ─── Connection Badge ─── */
+#connection-badge {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  z-index: 10;
+}
+#connection-badge.connected { background: rgba(63,185,80,0.2); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+#connection-badge.disconnected { background: rgba(248,81,73,0.2); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+
+/* ─── CSS2D Labels ─── */
+.station-label {
+  background: rgba(0,0,0,0.75);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+  pointer-events: none;
+  font-family: 'Courier New', monospace;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.speech-bubble {
+  background: white;
+  color: #333;
+  padding: 6px 14px;
+  border-radius: 14px;
+  font-size: 12px;
+  max-width: 220px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s;
+  font-family: sans-serif;
+  text-align: center;
+  position: relative;
+}
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: white;
+}
+.speech-bubble.visible { opacity: 1; }
+
+/* ─── Completion Overlay ─── */
+#completion-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(13,17,23,0.88);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(6px);
+}
+#completion-overlay.visible { display: flex; }
+#completion-card {
+  background: var(--bg-panel);
+  border: 2px solid var(--accent-green);
+  border-radius: 16px;
+  padding: 32px 40px;
+  max-width: 520px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(63,185,80,0.25);
+  animation: popIn 0.4s ease;
+}
+@keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+#completion-card h2 { font-size: 22px; color: var(--accent-green); margin-bottom: 8px; }
+#completion-card .subtitle { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+.completion-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 16px 0; }
+.completion-stat { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 10px; padding: 12px; }
+.completion-stat .val { font-size: 24px; font-weight: bold; }
+.completion-stat .lbl { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; margin-top: 4px; }
+#completion-suggestions { text-align: left; font-size: 12px; color: var(--text-secondary); margin-top: 16px; max-height: 120px; overflow-y: auto; padding: 10px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-light); white-space: pre-wrap; }
+#completion-countdown { margin-top: 14px; font-size: 12px; color: var(--accent-orange); }
+#completion-close { margin-top: 20px; padding: 10px 32px; background: var(--accent-green); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-family: var(--font-ui); cursor: pointer; transition: transform 0.2s; }
+#completion-close:hover { transform: scale(1.05); }
+@media (max-width: 1100px) {
+  .review-grid { grid-template-columns: 1fr; }
+  .modal-actions { flex-direction: column; }
+  .action-buttons { justify-content: flex-end; }
+}
+</style>
+</head>
+<body>
+
+<div id="container">
+  <div id="scene-wrap">
+    <canvas id="canvas3d"></canvas>
+    <div id="top-bar">
+      <div class="status-dot idle" id="status-dot"></div>
+      <div class="title">⛏️ OPC Optimizer</div>
+      <div class="node-name" id="current-node">等待连接...</div>
+      <div class="round-info" id="round-info">—</div>
+      <div id="progress-wrap"><div id="progress-bar"></div></div>
+      <button id="theme-toggle" title="切换主题">🌙</button>
+    </div>
+    <div id="task-strip"><div class="task-strip-empty">No active tasks yet.</div></div>
+    <div id="connection-badge" class="disconnected">● 未连接</div>
+    <!-- Round-end awaiting_input notification banner (v2.10) -->
+    <div id="awaiting-banner" style="display:none;position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(13,17,23,0.95);border:1px solid var(--accent-orange);border-radius:12px;padding:12px 20px;display:flex;align-items:center;gap:14px;min-width:360px;max-width:520px;backdrop-filter:blur(8px);box-shadow:0 4px 24px rgba(0,0,0,0.5);">
+      <div style="flex:1;">
+        <div style="font-size:13px;color:var(--text-primary);font-weight:600;">⏳ 第 <span id="awaiting-round">?</span> 轮完成</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;"><span id="awaiting-countdown">30</span>s 后自动继续下一轮...</div>
+      </div>
+      <button onclick="sendRoundCommand('continue')" style="padding:6px 14px;background:var(--accent-green);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;">▶ 继续</button>
+      <button onclick="sendRoundCommand('stop')" style="padding:6px 14px;background:rgba(248,81,73,0.2);color:var(--accent-red);border:1px solid var(--accent-red);border-radius:7px;cursor:pointer;font-size:12px;">■ 停止</button>
+    </div>
+  </div>
+  <div id="task-review-overlay" class="modal-overlay">
+    <div class="modal-card">
+      <h3>Review This Round's Tasks</h3>
+      <div class="modal-sub">Select what can run. If all tasks are unsuitable, ask AI for a new batch.</div>
+      <div id="task-review-pm-summary" style="margin-bottom: 15px; padding: 12px; background: rgba(88,166,255,0.1); border-left: 4px solid var(--accent-blue); border-radius: 6px; font-size: 13px; line-height: 1.6; color: var(--text-primary); display: none;"></div>
+      <div class="review-grid">
+        <div id="task-review-list" class="review-list"></div>
+        <div class="review-detail">
+          <div id="task-review-detail-title" style="font-size:13px;color:var(--text-primary);margin-bottom:8px;">Select a task</div>
+          <div class="modal-sub" id="task-review-detail-file"></div>
+          <pre id="task-review-detail-body">No task selected.</pre>
+          <ul id="task-review-checks" class="review-checks"></ul>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <textarea id="task-review-note" placeholder="Optional note for replan or scope trimming."></textarea>
+        <div class="action-buttons">
+          <button class="btn-close" onclick="closeTaskReview()">Close</button>
+          <button class="btn-replan" onclick="submitTaskReview(false)">Replan</button>
+          <button class="btn-approve" onclick="submitTaskReview(true)">Approve Selected</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="task-detail-overlay" class="modal-overlay">
+    <div class="modal-card">
+      <h3 id="task-detail-title">Task Detail</h3>
+      <div class="modal-sub" id="task-detail-file"></div>
+      <pre id="task-detail-body" style="width:100%;max-height:min(46vh,420px);overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.65;font-family:var(--font-ui);">No task selected.</pre>
+      <ul id="task-detail-checks" class="review-checks"></ul>
+      <div class="modal-actions">
+        <div></div>
+        <div class="action-buttons">
+          <button class="btn-close" onclick="closeTaskDetail()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Diff Review Modal (v2.4.0) -->
+<div id="diff-review-overlay">
+  <div id="diff-review-card">
+    <h3>📝 代码变更审核</h3>
+    <div class="review-info">
+      文件: <span id="review-filepath"></span> · 
+      匹配度: <span class="similarity" id="review-similarity"></span>
+    </div>
+    <div id="diff-review-diff"></div>
+    <div id="diff-review-actions">
+      <button id="btn-reject-diff" onclick="sendDiffDecision('reject_diff')">❌ 拒绝</button>
+      <button id="btn-accept-diff" onclick="sendDiffDecision('accept_diff')">✅ 接受</button>
+    </div>
+  </div>
+</div>
+
+<!-- Completion Overlay -->
+  <div id="completion-overlay">
+    <div id="completion-card">
+      <div style="font-size:48px;">🎉</div>
+      <h2>优化完成！</h2>
+      <div class="subtitle" id="completion-goal"></div>
+      <div class="completion-stats">
+        <div class="completion-stat"><div class="val" style="color:var(--accent-blue)" id="comp-rounds">—</div><div class="lbl">总轮次</div></div>
+        <div class="completion-stat"><div class="val" style="color:var(--accent-green)" id="comp-nodes">—</div><div class="lbl">节点执行</div></div>
+        <div class="completion-stat"><div class="val" style="color:var(--accent-orange)" id="comp-time">—</div><div class="lbl">总耗时</div></div>
+      </div>
+      <div id="completion-suggestions"></div>
+      <div id="completion-countdown"></div>
+      <button id="download-report-btn" onclick="downloadReport()">📥 下载报告</button>
+      <button id="new-task-btn" onclick="window.location.href='/'" style="margin-top: 10px; padding: 8px 24px; background: var(--accent-purple); color: #fff; border: none; border-radius: 8px; font-size: 13px; font-family: var(--font-ui); cursor: pointer; transition: transform 0.2s;">🚀 开启新任务</button>
+      <button id="completion-close" onclick="document.getElementById('completion-overlay').classList.remove('visible')">关闭</button>
+    </div>
+  </div>
+  <div id="right-panel">
+    <div id="tab-nav">
+      <button class="tab-btn active" data-tab="tab-logs">📋 日志</button>
+      <button class="tab-btn" data-tab="tab-diff">📝 Diff</button>
+      <button class="tab-btn" data-tab="tab-rounds">📊 轮次</button>
+      <button class="tab-btn" data-tab="tab-stats">📈 统计</button>
+      <button class="tab-btn" data-tab="tab-trace">🔍 Trace</button>
+      <button class="tab-btn" data-tab="tab-config">⚙️ 配置</button>
+    </div>
+
+    <!-- Tab: Logs -->
+    <div class="tab-content active" id="tab-logs">
+      <div id="log-header">
+        <input type="text" id="log-search" placeholder="🔍 搜索日志...">
+        <div class="log-filter-btns">
+          <button class="log-filter-btn active" data-level="all">全部</button>
+          <button class="log-filter-btn" data-level="node-start">▶</button>
+          <button class="log-filter-btn" data-level="node-complete">✔</button>
+          <button class="log-filter-btn" data-level="node-error">✖</button>
+        </div>
+      </div>
+      <div id="logs"></div>
+    </div>
+
+    <!-- Tab: Diff Viewer -->
+    <div class="tab-content" id="tab-diff">
+      <div id="diff-list">
+        <div class="diff-empty">暂无变更。执行代码修改后将在此显示 diff。</div>
+      </div>
+    </div>
+
+    <!-- Tab: Round Comparison -->
+    <div class="tab-content" id="tab-rounds">
+      <div id="rounds-list">
+        <div class="rounds-empty">暂无轮次数据。完成一轮后将在此显示对比。</div>
+      </div>
+    </div>
+
+    <!-- Tab: Stats Charts (v2.3.0) -->
+    <div class="tab-content" id="tab-stats">
+      <div id="stats-chart-panel">
+        <div class="chart-section">
+          <h5>⏱️ 每轮耗时趋势</h5>
+          <canvas id="chart-time"></canvas>
+        </div>
+        <div class="chart-section">
+          <h5>📁 每轮文件变更数</h5>
+          <canvas id="chart-files"></canvas>
+        </div>
+        <div class="chart-empty" id="chart-empty">暂无数据。完成一轮后将显示图表。</div>
+      </div>
+    </div>
+
+    <!-- Tab: Trace Viewer (v2.6.0) -->
+    <div class="tab-content" id="tab-trace">
+      <div id="trace-header">
+        <span style="font-size:11px;color:var(--text-secondary);">🔍 LLM 调用记录</span>
+        <button onclick="loadTraces()">刷新</button>
+        <button onclick="exportTraces()">📥 导出 JSON</button>
+      </div>
+      <div id="trace-list">
+        <div class="trace-empty">暂无 Trace 数据。运行优化后将自动记录。</div>
+      </div>
+    </div>
+
+    <!-- Tab: Config Viewer (v2.9.0) -->
+    <div class="tab-content" id="tab-config">
+      <div id="config-panel-inner" style="padding:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <span style="font-size:11px;color:var(--text-secondary);">⚙️ 当前运行配置</span>
+          <button onclick="loadConfig()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface-raised);color:var(--text-secondary);cursor:pointer;">刷新</button>
+        </div>
+        <div id="config-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+        <div id="config-empty" style="color:var(--text-secondary);font-size:12px;text-align:center;padding:24px;">加载中...</div>
+        <div style="margin-top:16px;text-align:center;">
+          <a href="/api/config/template" download="opc.config.yaml" style="font-size:11px;color:var(--accent-blue);text-decoration:none;border:1px solid var(--accent-blue);padding:6px 14px;border-radius:6px;display:inline-block;">📥 下载 opc.config.yaml 模板</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats + Timings (always visible at bottom) -->
+    <div id="stats-panel">
+      <div class="stat-card"><div class="label">当前轮次</div><div class="value blue" id="stat-round">—</div></div>
+      <div class="stat-card"><div class="label">已完成节点</div><div class="value green" id="stat-nodes">0</div></div>
+      <div class="stat-card"><div class="label">API 调用</div><div class="value orange" id="stat-calls">0</div></div>
+      <div class="stat-card"><div class="label">总耗时</div><div class="value purple" id="stat-time">0s</div></div>
+      <div class="stat-card"><div class="label">🧹 Formatter</div><div class="value" id="stat-formatter" style="font-size:11px;color:#8b949e;">--</div></div>
+    </div>
+    <div id="timings-panel">
+      <h4>⏱️ 节点耗时</h4>
+      <div id="timing-bars"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js CDN (v2.3.0) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<!-- Three.js via importmap (reliable CDN approach) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+window.THREE = THREE;
+
+// ═══════════════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════════════
+const HTTP_PORT = Number.parseInt(location.port || '8765', 10) || 8765;
+const WS_PORT = HTTP_PORT + 1;
+const WS_PROTOCOL = location.protocol === 'https:' ? 'wss' : 'ws';
+const WS_URL = `${WS_PROTOCOL}://${location.hostname}:${WS_PORT}`;
+const NODES = ['plan', 'execute', 'test', 'archive', 'report', 'interact'];
+const NODE_COLORS = {
+  plan:     0x58a6ff, // blue
+  execute:  0x3fb950, // green
+  test:     0xf0883e, // orange
+  archive:  0xbc8cff, // purple
+  report:   0x39d2c0, // teal
+  interact: 0xf78166, // salmon
+};
+const NODE_LABELS = {
+  plan: '📋 计划', execute: '⌨️ 执行', test: '🧪 测试',
+  archive: '📦 归档', report: '📊 报告', interact: '☕ 休息'
+};
+// Station positions in the room (x, z)
+const STATIONS = {
+  plan:     { x: -6, z: -4 },
+  execute:  { x:  0, z: -4 },
+  test:     { x:  6, z: -4 },
+  archive:  { x: -6, z:  4 },
+  report:   { x:  0, z:  4 },
+  interact: { x:  6, z:  4 },
+};
+// Facing direction when working at station (rotation.y)
+const STATION_FACING = {
+  plan: Math.PI,     execute: Math.PI,     test: Math.PI,        // front row: face back wall
+  archive: 0, report: 0, interact: 0,   // back row: face front
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  THREE.JS SETUP
+// ═══════════════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x87ceeb); // sky blue
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x87ceeb, 30, 60);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+camera.position.set(18, 16, 18);
+camera.lookAt(0, 0, 0);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI / 2.2;
+controls.minDistance = 8;
+controls.maxDistance = 40;
+controls.target.set(0, 1, 0);
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xfff4e6, 1.2);
+sunLight.position.set(10, 20, 10);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.camera.left = -15;
+sunLight.shadow.camera.right = 15;
+sunLight.shadow.camera.top = 15;
+sunLight.shadow.camera.bottom = -15;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0x8ec8f8, 0.3);
+fillLight.position.set(-10, 8, -10);
+scene.add(fillLight);
+
+// ═══════════════════════════════════════════════════════════════
+//  BUILD MINECRAFT OFFICE
+// ═══════════════════════════════════════════════════════════════
+function voxelMat(color) {
+  return new THREE.MeshLambertMaterial({ color });
+}
+
+// Floor — grass-like tiles
+const floorGeo = new THREE.BoxGeometry(20, 0.5, 14);
+const floor = new THREE.Mesh(floorGeo, voxelMat(0x5b8c5a));
+floor.position.set(0, -0.25, 0);
+floor.receiveShadow = true;
+scene.add(floor);
+
+// Floor detail grid
+for (let x = -9; x <= 9; x += 2) {
+  for (let z = -6; z <= 6; z += 2) {
+    const tile = new THREE.Mesh(
+      new THREE.BoxGeometry(1.9, 0.1, 1.9),
+      voxelMat(Math.random() > 0.5 ? 0x6b9c6a : 0x4b7c4a)
+    );
+    tile.position.set(x, 0.01, z);
+    tile.receiveShadow = true;
+    scene.add(tile);
+  }
+}
+
+// Walls (back + sides)
+function buildWall(w, h, d, x, y, z, color = 0x8B7355) {
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), voxelMat(color));
+  wall.position.set(x, y, z);
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  scene.add(wall);
+  return wall;
+}
+buildWall(20, 5, 0.5, 0, 2.5, -7, 0x8B7355);  // back wall
+buildWall(0.5, 5, 14, -10, 2.5, 0, 0x7a6548);  // left wall
+buildWall(0.5, 5, 14, 10, 2.5, 0, 0x7a6548);   // right wall
+
+// Window holes in back wall (decorative lighter patches)
+for (let wx = -6; wx <= 6; wx += 4) {
+  const win = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 2, 0.6),
+    voxelMat(0xadd8e6)
+  );
+  win.position.set(wx, 3, -7);
+  scene.add(win);
+}
+
+// ─── Build Stations ─────────────────────────────────────────
+const stationGroups = {};
+const stationIndicators = {};
+
+function buildDesk(x, z, color) {
+  const g = new THREE.Group();
+  // Desk top
+  const top = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.3, 1.5), voxelMat(0x8B6914));
+  top.position.set(0, 1.2, 0);
+  top.castShadow = true;
+  g.add(top);
+  // Legs
+  for (let lx of [-1, 1]) {
+    for (let lz of [-0.5, 0.5]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.2, 0.2), voxelMat(0x6B4F1D));
+      leg.position.set(lx, 0.6, lz);
+      g.add(leg);
+    }
+  }
+  g.position.set(x, 0, z);
+  return g;
+}
+
+function buildChair(x, z, facingBack = true) {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.2, 0.8), voxelMat(0xc0392b));
+  seat.position.set(0, 0.8, 0);
+  g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1, 0.2), voxelMat(0xc0392b));
+  // Chair back faces AWAY from desk (outward)
+  const backZ = facingBack ? 0.35 : -0.35;
+  back.position.set(0, 1.4, backZ);
+  g.add(back);
+  const chairZ = facingBack ? z + 2.2 : z - 2.2;
+  g.position.set(x, 0, chairZ);
+  return g;
+}
+
+function buildStation(name, x, z, color) {
+  const g = new THREE.Group();
+  const isFrontRow = z < 0; // front row faces back wall
+  
+  // Floor marker (glowing platform)
+  const platform = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 0.15, 3.5),
+    new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.25 })
+  );
+  platform.position.set(x, 0.08, z);
+  scene.add(platform);
+  
+  // Interact station: sofa + coffee table only (no desk/chair)
+  if (name === 'interact') {
+    // Coffee table (low)
+    const cTable = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 1), voxelMat(0x8B6914));
+    cTable.position.set(x, 0.5, z);
+    cTable.castShadow = true;
+    g.add(cTable);
+    // Table legs
+    for (let lx of [-0.5, 0.5]) {
+      for (let lz of [-0.3, 0.3]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 0.15), voxelMat(0x6B4F1D));
+        leg.position.set(x + lx, 0.25, z + lz);
+        g.add(leg);
+      }
+    }
+    // Coffee mug on table
+    const mug = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.35, 0.3), voxelMat(0xe74c3c));
+    mug.position.set(x + 0.3, 0.8, z);
+    g.add(mug);
+    // Sofa
+    const sofa = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.7, 0.8), voxelMat(0x8e44ad));
+    sofa.position.set(x, 0.35, z - 1.2);
+    g.add(sofa);
+    const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 0.25), voxelMat(0x7d3c98));
+    sofaBack.position.set(x, 0.75, z - 1.55);
+    g.add(sofaBack);
+    // Armrests
+    for (let side of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.4, 0.8), voxelMat(0x7d3c98));
+      arm.position.set(x + side * 1.1, 0.55, z - 1.2);
+      g.add(arm);
+    }
+  } else {
+    // Normal station: desk + chair
+    const desk = buildDesk(x, z, color);
+    g.add(desk);
+    const chair = buildChair(x, z, isFrontRow);
+    g.add(chair);
+    
+    // Station-specific props
+    if (name === 'plan') {
+      const book = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.8), voxelMat(0x2980b9));
+      book.position.set(x - 0.3, 1.5, z);
+      g.add(book);
+    } else if (name === 'execute') {
+      const monitor = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.1), voxelMat(0x2c3e50));
+      monitor.position.set(x, 2.0, z - 0.4);
+      g.add(monitor);
+      const screen = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.05), voxelMat(0x3498db));
+      screen.position.set(x, 2.0, z - 0.35);
+      g.add(screen);
+    } else if (name === 'test') {
+      for (let i = 0; i < 3; i++) {
+        const light = new THREE.Mesh(
+          new THREE.BoxGeometry(0.3, 0.3, 0.3),
+          voxelMat([0xf85149, 0xf0883e, 0x3fb950][i])
+        );
+        light.position.set(x + 1.5, 2.5 - i * 0.4, z);
+        g.add(light);
+      }
+    } else if (name === 'archive') {
+      const cab = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 0.8), voxelMat(0x7f8c8d));
+      cab.position.set(x + 1.5, 1.25, z);
+      cab.castShadow = true;
+      g.add(cab);
+      for (let dy = 0; dy < 3; dy++) {
+        const drawer = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.1), voxelMat(0x95a5a6));
+        drawer.position.set(x + 1.5, 0.6 + dy * 0.8, z + 0.45);
+        g.add(drawer);
+      }
+    } else if (name === 'report') {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 0.1), voxelMat(0xecf0f1));
+      board.position.set(x, 2.5, z + 0.6);
+      g.add(board);
+      for (let i = 0; i < 4; i++) {
+        const h = 0.3 + Math.random() * 0.8;
+        const bar = new THREE.Mesh(
+          new THREE.BoxGeometry(0.3, h, 0.05),
+          voxelMat([0x3498db, 0x2ecc71, 0xe74c3c, 0xf39c12][i])
+        );
+        bar.position.set(x - 0.6 + i * 0.4, 1.9 + h/2, z + 0.55);
+        g.add(bar);
+      }
+    }
+  }
+  
+  // CSS2D text label (replaces old block sign)
+  const labelDiv = document.createElement('div');
+  labelDiv.className = 'station-label';
+  labelDiv.textContent = NODE_LABELS[name] || name;
+  labelDiv.style.borderLeft = `3px solid #${color.toString(16).padStart(6,'0')}`;
+  const labelObj = new CSS2DObject(labelDiv);
+  labelObj.position.set(x, 4.2, z);
+  scene.add(labelObj);
+  
+  // Activity indicator (glow cube, hidden by default)
+  const indicator = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.5, 0.5),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0 })
+  );
+  indicator.position.set(x, 4.8, z);
+  g.add(indicator);
+  stationIndicators[name] = indicator;
+  
+  scene.add(g);
+  stationGroups[name] = g;
+}
+
+for (const name of NODES) {
+  const { x, z } = STATIONS[name];
+  buildStation(name, x, z, NODE_COLORS[name]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BLOCKY CHARACTER (Steve-style)
+// ═══════════════════════════════════════════════════════════════
+const steve = new THREE.Group();
+
+// Head
+const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), voxelMat(0xf5cba7));
+head.position.set(0, 2.3, 0);
+head.castShadow = true;
+steve.add(head);
+
+// Eyes
+const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.05), voxelMat(0x1a1a2e));
+eyeL.position.set(-0.14, 2.35, 0.32);
+steve.add(eyeL);
+const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.05), voxelMat(0x1a1a2e));
+eyeR.position.set(0.14, 2.35, 0.32);
+steve.add(eyeR);
+
+// Body
+const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.35), voxelMat(0x2980b9));
+body.position.set(0, 1.6, 0);
+body.castShadow = true;
+steve.add(body);
+
+// Arms (attached at shoulder height = body top y=2.0)
+const armL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.75, 0.25), voxelMat(0x58a6ff));
+armL.position.set(-0.42, 2.0, 0);
+armL.geometry.translate(0, -0.375, 0); // pivot at top
+armL.castShadow = true;
+steve.add(armL);
+
+const armR = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.75, 0.25), voxelMat(0x58a6ff));
+armR.position.set(0.42, 2.0, 0);
+armR.geometry.translate(0, -0.375, 0);
+armR.castShadow = true;
+steve.add(armR);
+
+// Legs (attached at waist = body bottom y=1.2)
+const legL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.3), voxelMat(0x5d6d7e));
+legL.position.set(-0.16, 0.8, 0);
+legL.castShadow = true;
+steve.add(legL);
+
+const legR = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.3), voxelMat(0x5d6d7e));
+legR.position.set(0.16, 0.8, 0);
+legR.castShadow = true;
+steve.add(legR);
+
+steve.position.set(0, 0, 0);
+scene.add(steve);
+
+// Speech bubble (CSS2D)
+const bubbleDiv = document.createElement('div');
+bubbleDiv.className = 'speech-bubble';
+bubbleDiv.id = 'speech-bubble';
+const bubbleObj = new CSS2DObject(bubbleDiv);
+bubbleObj.position.set(0, 3.3, 0);
+steve.add(bubbleObj);
+
+// News headlines for speech bubble
+let newsHeadlines = [
+  '🤖 AI正在学习如何写代码...', '☕ 先喝杯咖啡再说',
+  '🔧 正在优化世界...', '📊 数据显示一切正常',
+  '🧪 测试中请勿打扰', '💡 想到一个好点子！',
+  '🎯 目标：让代码更优雅', '🚀 性能提升ing...',
+  '📝 正在写报告...别催', '🎮 工作就像打游戏',
+  '🌟 今天也要加油啊', '🔍 发现了一个可以优化的地方',
+  '💤 有点困...但还是要工作', '🎵 一边coding一边听歌',
+  '🛡️ 安全第一！代码审核中',
+];
+let bubbleTimer = null;
+function startBubbleCycle() {
+  let idx = 0;
+  function showNext() {
+    let text = newsHeadlines[Math.floor(Math.random() * newsHeadlines.length)];
+    // Guard against non-string items (LLM may return objects like {content: "...", url: ""})
+    if (typeof text !== 'string') {
+      text = typeof text === 'object' ? (text.content || text.title || text.text || text.headline || JSON.stringify(text)) : String(text);
+    }
+    bubbleDiv.textContent = text;
+    bubbleDiv.classList.add('visible');
+    setTimeout(() => { bubbleDiv.classList.remove('visible'); }, 4000);
+  }
+  showNext();
+  bubbleTimer = setInterval(showNext, 8000);
+}
+setTimeout(startBubbleCycle, 3000);
+
+// ═══════════════════════════════════════════════════════════════
+//  PARTICLE SYSTEM (for effects)
+// ═══════════════════════════════════════════════════════════════
+let particles = [];
+
+function spawnParticles(x, y, z, color, count = 20) {
+  for (let i = 0; i < count; i++) {
+    const size = 0.1 + Math.random() * 0.15;
+    const p = new THREE.Mesh(
+      new THREE.BoxGeometry(size, size, size),
+      new THREE.MeshBasicMaterial({ color })
+    );
+    p.position.set(x, y, z);
+    p.userData.vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.15,
+      Math.random() * 0.12 + 0.05,
+      (Math.random() - 0.5) * 0.15
+    );
+    p.userData.life = 1.0;
+    scene.add(p);
+    particles.push(p);
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.position.add(p.userData.vel);
+    p.userData.vel.y -= 0.004; // gravity
+    p.userData.life -= dt * 0.8;
+    p.material.opacity = Math.max(0, p.userData.life);
+    p.material.transparent = true;
+    if (p.userData.life <= 0) {
+      scene.remove(p);
+      particles.splice(i, 1);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ANIMATION STATE
+// ═══════════════════════════════════════════════════════════════
+let currentNode = null;
+let targetPos = new THREE.Vector3(0, 0, 0);
+let isMoving = false;
+let walkTime = 0;
+let workTime = 0;
+let isWorking = false;
+let totalElapsed = 0;
+let completedNodes = 0;
+
+function moveToStation(nodeName) {
+  if (!STATIONS[nodeName]) return;
+  currentNode = nodeName;
+  const s = STATIONS[nodeName];
+  // Front row (z<0): stand behind desk (z+1.5); back row (z>0): stand in front (z-1.5)
+  const standZ = s.z < 0 ? s.z + 1.5 : s.z - 1.5;
+  targetPos.set(s.x, 0, standZ);
+  isMoving = true;
+  isWorking = false;
+}
+
+function startWorking() {
+  isWorking = true;
+  isMoving = false;
+  workTime = 0;
+}
+
+function celebrateAt(nodeName) {
+  const s = STATIONS[nodeName];
+  if (s) spawnParticles(s.x, 3, s.z, NODE_COLORS[nodeName], 15);
+}
+
+function errorAt(nodeName) {
+  const s = STATIONS[nodeName];
+  if (s) spawnParticles(s.x, 2, s.z, 0xf85149, 25);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════════
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.1); // Cap delta time to prevent physics explosions on tab switch
+  
+  // ── Character movement ──
+  if (isMoving) {
+    walkTime += dt * 8;
+    const dir = targetPos.clone().sub(steve.position);
+    const dist = dir.length();
+    
+    if (dist > 0.15) {
+      dir.normalize();
+      const speed = 3.5;
+      const step = Math.min(speed * dt, dist); // Prevent overshooting
+      steve.position.add(dir.multiplyScalar(step));
+      
+      // Face direction
+      steve.rotation.y = Math.atan2(dir.x, dir.z);
+      
+      // Walk animation — swing limbs
+      armL.rotation.x = Math.sin(walkTime) * 0.6;
+      armR.rotation.x = -Math.sin(walkTime) * 0.6;
+      legL.rotation.x = -Math.sin(walkTime) * 0.5;
+      legR.rotation.x = Math.sin(walkTime) * 0.5;
+      
+      // Slight bob
+      steve.position.y = Math.abs(Math.sin(walkTime * 2)) * 0.08;
+    } else {
+      steve.position.copy(targetPos);
+      steve.position.y = 0;
+      armL.rotation.x = 0;
+      armR.rotation.x = 0;
+      legL.rotation.x = 0;
+      legR.rotation.x = 0;
+      // Face the desk
+      if (currentNode && STATION_FACING[currentNode] !== undefined) {
+        steve.rotation.y = STATION_FACING[currentNode];
+      }
+      startWorking();
+    }
+  }
+  
+  // ── Working animation ──
+  if (isWorking) {
+    workTime += dt * 5;
+    // Subtle arm movement (typing/working)
+    armL.rotation.x = Math.sin(workTime * 3) * 0.2;
+    armR.rotation.x = Math.sin(workTime * 3 + 1) * 0.2;
+    // Slight head nod
+    head.rotation.x = Math.sin(workTime * 1.5) * 0.05;
+  }
+  
+  // ── Station indicators ──
+  for (const [name, indicator] of Object.entries(stationIndicators)) {
+    if (name === currentNode && isWorking) {
+      indicator.material.opacity = 0.5 + Math.sin(Date.now() * 0.005) * 0.5;
+      indicator.rotation.y += dt * 2;
+    } else {
+      indicator.material.opacity = 0;
+    }
+  }
+  
+  // ── Particles ──
+  updateParticles(dt);
+  
+  // ── Render ──
+  controls.update();
+  
+  // Resize check
+  const wrap = document.getElementById('scene-wrap');
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  
+  renderer.render(scene, camera);
+  css2dRenderer.render(scene, camera);
+}
+
+// CSS2D Renderer setup
+const css2dRenderer = new CSS2DRenderer();
+css2dRenderer.setSize(canvas.clientWidth, canvas.clientHeight);
+css2dRenderer.domElement.style.position = 'absolute';
+css2dRenderer.domElement.style.top = '0';
+css2dRenderer.domElement.style.left = '0';
+css2dRenderer.domElement.style.pointerEvents = 'none';
+document.getElementById('scene-wrap').appendChild(css2dRenderer.domElement);
+
+// Also resize CSS2D renderer
+const origResize = () => {
+  const wrap = document.getElementById('scene-wrap');
+  css2dRenderer.setSize(wrap.clientWidth, wrap.clientHeight);
+};
+window.addEventListener('resize', origResize);
+
+animate();
+
+// ═══════════════════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════════════════
+const logsEl = document.getElementById('logs');
+let logCount = 0;
+let activeLogFilter = 'all';
+let logSearchQuery = '';
+
+function addLog(text, cls = 'info') {
+  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const div = document.createElement('div');
+  div.className = `log-line ${cls}`;
+  div.textContent = `[${now}] ${text}`;
+  div.dataset.level = cls;
+  // Apply current filters
+  if (activeLogFilter !== 'all' && cls !== activeLogFilter) div.classList.add('hidden');
+  if (logSearchQuery && !text.toLowerCase().includes(logSearchQuery)) div.classList.add('hidden');
+  logsEl.appendChild(div);
+  logsEl.scrollTop = logsEl.scrollHeight;
+  logCount++;
+}
+
+function updateTimingBars(timings) {
+  const container = document.getElementById('timing-bars');
+  container.innerHTML = '';
+  const maxTime = Math.max(...Object.values(timings), 1);
+  const colors = ['#58a6ff', '#3fb950', '#f0883e', '#bc8cff', '#39d2c0', '#f78166'];
+  let i = 0;
+  for (const [name, elapsed] of Object.entries(timings)) {
+    const pct = (elapsed / maxTime) * 100;
+    const row = document.createElement('div');
+    row.className = 'timing-row';
+    row.innerHTML = `
+      <span class="name">${name}</span>
+      <div class="timing-bar-wrap">
+        <div class="timing-bar" style="width:${pct}%; background:${colors[i % colors.length]}"></div>
+      </div>
+      <span class="time">${elapsed}s</span>
+    `;
+    container.appendChild(row);
+    i++;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TAB SYSTEM
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  LOG SEARCH & FILTER
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('log-search').addEventListener('input', (e) => {
+  logSearchQuery = e.target.value.toLowerCase();
+  applyLogFilters();
+});
+
+document.querySelectorAll('.log-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.log-filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeLogFilter = btn.dataset.level;
+    applyLogFilters();
+  });
+});
+
+function applyLogFilters() {
+  logsEl.querySelectorAll('.log-line').forEach(line => {
+    const matchLevel = activeLogFilter === 'all' || line.dataset.level === activeLogFilter;
+    const matchSearch = !logSearchQuery || line.textContent.toLowerCase().includes(logSearchQuery);
+    line.classList.toggle('hidden', !(matchLevel && matchSearch));
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  THEME TOGGLE
+// ═══════════════════════════════════════════════════════════════
+const themeBtn = document.getElementById('theme-toggle');
+let isDark = localStorage.getItem('opc-theme') !== 'light';
+
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  themeBtn.textContent = isDark ? '🌙' : '☀️';
+  // Update Three.js sky color
+  const skyColor = isDark ? 0x87ceeb : 0xb8dff8;
+  renderer.setClearColor(skyColor);
+  scene.fog.color.setHex(skyColor);
+}
+
+themeBtn.addEventListener('click', () => {
+  isDark = !isDark;
+  localStorage.setItem('opc-theme', isDark ? 'dark' : 'light');
+  applyTheme();
+});
+applyTheme();
+
+// ═══════════════════════════════════════════════════════════════
+//  DIFF VIEWER
+// ═══════════════════════════════════════════════════════════════
+const diffList = document.getElementById('diff-list');
+const allDiffs = []; // Store all diffs
+
+function renderDiffs() {
+  diffList.innerHTML = '';
+  if (allDiffs.length === 0) {
+    diffList.innerHTML = '<div class="diff-empty">暂无变更。执行代码修改后将在此显示 diff。</div>';
+    return;
+  }
+  allDiffs.forEach((diff, idx) => {
+    const fileDiv = document.createElement('div');
+    fileDiv.className = 'diff-file';
+    const adds = (diff.content.match(/^\+/gm) || []).length;
+    const dels = (diff.content.match(/^-/gm) || []).length;
+    fileDiv.innerHTML = `
+      <div class="diff-file-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+        <span>📄 ${diff.filename}</span>
+        <span style="color:var(--accent-green)">+${adds}</span>&nbsp;<span style="color:var(--accent-red)">-${dels}</span>
+      </div>
+      <div class="diff-file-body">
+        ${diff.content.split('\n').map(line => {
+          if (line.startsWith('+')) return `<div class="diff-line add">${escHtml(line)}</div>`;
+          if (line.startsWith('-')) return `<div class="diff-line del">${escHtml(line)}</div>`;
+          return `<div class="diff-line ctx">${escHtml(line)}</div>`;
+        }).join('')}
+      </div>
+    `;
+    diffList.appendChild(fileDiv);
+  });
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ROUND COMPARISON (v2.3.0 — expandable detail)
+// ═══════════════════════════════════════════════════════════════
+const roundsList = document.getElementById('rounds-list');
+const roundData = []; // {round, nodesCompleted, elapsed, timings, diffsCount}
+const roundDetailStore = {}; // round -> {plan_summary, diff_summary, suggestions, files_changed}
+
+function addRoundData(round, data) {
+  roundData.push({ round, ...data });
+  renderRounds();
+  updateCharts();
+}
+
+function renderRounds() {
+  roundsList.innerHTML = '';
+  if (roundData.length === 0) {
+    roundsList.innerHTML = '<div class="rounds-empty">暂无轮次数据。完成一轮后将在此显示对比。</div>';
+    return;
+  }
+  const colors = ['#58a6ff', '#3fb950', '#f0883e', '#bc8cff', '#39d2c0', '#f78166'];
+  // Render latest first
+  [...roundData].reverse().forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'round-card';
+    const totalT = r.elapsed ? r.elapsed.toFixed(1) : '?';
+    const nodeCount = r.nodesCompleted || 0;
+    const diffCount = r.diffsCount || 0;
+    let segHtml = '';
+    if (r.timings) {
+      const total = Object.values(r.timings).reduce((a,b) => a+b, 0) || 1;
+      let ci = 0;
+      for (const [name, t] of Object.entries(r.timings)) {
+        const pct = (t / total) * 100;
+        segHtml += `<div class="round-timing-seg" style="flex:${pct};background:${colors[ci % colors.length]}" title="${name}: ${t}s"></div>`;
+        ci++;
+      }
+    }
+    // Build detail section from stored data
+    const detail = roundDetailStore[r.round];
+    let detailHtml = '';
+    if (detail) {
+      const files = (detail.files_changed || []).map(f => `\`${f}\``).join(', ') || '无';
+      detailHtml = `<div class="round-detail" id="detail-${r.round}">`
+        + `<b>📋 计划:</b>\n${escHtml((detail.plan_summary || '').substring(0, 300))}\n\n`
+        + `<b>📝 变更:</b>\n${escHtml((detail.diff_summary || '').substring(0, 300))}\n\n`
+        + `<b>📂 文件:</b> ${files}\n\n`
+        + `<b>💡 建议:</b>\n${escHtml((detail.suggestions || '').substring(0, 300))}`
+        + `</div>`;
+    } else {
+      detailHtml = `<div class="round-detail" id="detail-${r.round}"><i>暂无详情 (等待后端推送)</i></div>`;
+    }
+    card.innerHTML = `
+      <div class="round-card-header" onclick="toggleRoundDetail(${r.round})">
+        <span>🔄 第 ${r.round} 轮 ▾</span>
+        <span style="color:var(--text-secondary)">${totalT}s</span>
+      </div>
+      <div class="round-card-body">
+        <div class="round-stat"><div class="val" style="color:var(--accent-green)">${nodeCount}</div><div class="lbl">节点</div></div>
+        <div class="round-stat"><div class="val" style="color:var(--accent-orange)">${diffCount}</div><div class="lbl">文件变更</div></div>
+        <div class="round-stat"><div class="val" style="color:var(--accent-blue)">${totalT}s</div><div class="lbl">耗时</div></div>
+      </div>
+      ${segHtml ? `<div class="round-timing-bar">${segHtml}</div>` : ''}
+      ${detailHtml}
+    `;
+    roundsList.appendChild(card);
+  });
+}
+
+// Toggle detail panel
+window.toggleRoundDetail = function(round) {
+  const el = document.getElementById(`detail-${round}`);
+  if (el) el.classList.toggle('open');
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  CHART.JS STATS (v2.3.0)
+// ═══════════════════════════════════════════════════════════════
+let timeChart = null;
+let filesChart = null;
+
+function initCharts() {
+  if (typeof Chart === 'undefined') return;
+  const commonOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: 'rgba(48,54,61,0.5)' } },
+      y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: 'rgba(48,54,61,0.5)' }, beginAtZero: true },
+    },
+  };
+  timeChart = new Chart(document.getElementById('chart-time'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: '耗时(s)', data: [], borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.1)', fill: true, tension: 0.3 }] },
+    options: commonOpts,
+  });
+  filesChart = new Chart(document.getElementById('chart-files'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: '文件数', data: [], backgroundColor: '#3fb950' }] },
+    options: commonOpts,
+  });
+}
+
+try { initCharts(); } catch(e) { console.warn('Chart.js not loaded:', e); }
+
+function updateCharts() {
+  if (!timeChart || !filesChart) return;
+  const labels = roundData.map(r => `第${r.round}轮`);
+  const times = roundData.map(r => r.elapsed ? r.elapsed.toFixed(1) : 0);
+  const files = roundData.map(r => r.diffsCount || 0);
+  timeChart.data.labels = labels;
+  timeChart.data.datasets[0].data = times;
+  timeChart.update();
+  filesChart.data.labels = labels;
+  filesChart.data.datasets[0].data = files;
+  filesChart.update();
+  // Hide empty placeholder
+  const empty = document.getElementById('chart-empty');
+  if (empty && roundData.length > 0) empty.style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  REPORT DOWNLOAD (v2.3.0)
+// ═══════════════════════════════════════════════════════════════
+window.downloadReport = function() {
+  fetch('/api/export-report')
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.blob();
+    })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'opc_report.md';
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('📥 报告已下载', 'node-complete');
+    })
+    .catch(err => {
+      addLog(`📥 下载失败: ${err}`, 'node-error');
+    });
+};
+// ═══════════════════════════════════════════════════════════════
+//  TRACE VIEWER (v2.6.0)
+// ═══════════════════════════════════════════════════════════════
+const NODE_TAG_COLORS = {
+  plan: '#58a6ff', execute: '#3fb950', test: '#f0883e',
+  archive: '#bc8cff', report: '#39d2c0', interact: '#f78166',
+};
+let _traceCache = [];
+
+window.loadTraces = function() {
+  fetch('/api/traces')
+    .then(res => res.json())
+    .then(data => {
+      // data is { "1": [...entries], "2": [...] }
+      _traceCache = [];
+      const list = document.getElementById('trace-list');
+      if (!data || Object.keys(data).length === 0) {
+        list.innerHTML = '<div class="trace-empty">暂无 Trace 数据。运行优化后将自动记录。</div>';
+        return;
+      }
+      list.innerHTML = '';
+      const rounds = Object.keys(data).map(Number).sort((a, b) => a - b);
+      for (const roundNum of rounds) {
+        const entries = data[roundNum];
+        _traceCache.push(...entries);
+        const group = document.createElement('div');
+        group.className = 'trace-round-group';
+        group.innerHTML = `<div class="trace-round-title">第 ${roundNum} 轮 (${entries.length} 次调用)</div>`;
+        for (let i = 0; i < entries.length; i++) {
+          group.appendChild(renderTraceCard(entries[i], `r${roundNum}_${i}`));
+        }
+        list.appendChild(group);
+      }
+    })
+    .catch(err => {
+      document.getElementById('trace-list').innerHTML =
+        `<div class="trace-empty">加载失败: ${err}</div>`;
+    });
+};
+
+// ── Config Viewer (v2.9.0) ────────────────────────────────────
+window.loadConfig = function() {
+  fetch('/api/config')
+    .then(res => res.json())
+    .then(cfg => {
+      const grid = document.getElementById('config-grid');
+      const empty = document.getElementById('config-empty');
+      if (!cfg || Object.keys(cfg).length === 0) {
+        empty.textContent = '暂无配置数据。';
+        return;
+      }
+      empty.style.display = 'none';
+      const items = [
+        { label: '📂 项目路径', value: cfg.path || cfg.project_path || '--' },
+        { label: '🎯 优化目标', value: cfg.goal || '--' },
+        { label: '🤖 LLM 模型', value: cfg.state_model || cfg.model || '默认' },
+        { label: '🔄 最大轮次', value: cfg.max_rounds || '--' },
+        { label: '🧹 Formatter', value: cfg.formatter || 'auto' },
+        { label: '⏱️ 超时', value: (cfg.timeout || 120) + 's' },
+        { label: '🧾 计划审核', value: cfg.skip_plan_review ? '跳过审核 / 全自动' : '人工审核 / 需确认' },
+        { label: '🏜️ Dry Run', value: cfg.dry_run ? '是' : '否' },
+        { label: '🤖 Auto', value: cfg.auto ? '是' : '否' },
+      ];
+      grid.innerHTML = items.map(it =>
+        `<div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:10px;">` +
+        `<div style="font-size:10px;color:var(--text-secondary);margin-bottom:4px;">${it.label}</div>` +
+        `<div style="font-size:12px;color:var(--text-primary);word-break:break-all;">${it.value}</div></div>`
+      ).join('');
+      // Update stat card
+      const fmtEl = document.getElementById('stat-formatter');
+      if (fmtEl) fmtEl.textContent = cfg.formatter || 'auto';
+    })
+    .catch(() => {
+      document.getElementById('config-empty').textContent = '加载失败';
+    });
+};
+// Auto-load config when tab is shown
+document.addEventListener('click', e => {
+  if (e.target && e.target.dataset && e.target.dataset.tab === 'tab-config') {
+    setTimeout(loadConfig, 100);
+  }
+});
+
+window.exportTraces = function() {
+  const json = JSON.stringify(_traceCache, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'opc_traces.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  addLog('📥 Trace 数据已导出', 'node-complete');
+};
+
+function renderTraceCard(entry, cardId) {
+  const card = document.createElement('div');
+  card.className = 'trace-card';
+
+  const nodeColor = NODE_TAG_COLORS[entry.node_name] || '#8b949e';
+  const totalTok = (entry.prompt_tokens || 0) + (entry.completion_tokens || 0);
+  const elapsed = entry.elapsed_seconds ? `${entry.elapsed_seconds}s` : '';
+
+  const header = document.createElement('div');
+  header.className = 'trace-card-header';
+  header.innerHTML = `
+    <span><span class="node-tag" style="background:${nodeColor}">${entry.node_name || '?'}</span> ${entry.model_name || ''}</span>
+    <span class="token-info">${totalTok} tok · ${elapsed}</span>
+  `;
+  header.onclick = () => {
+    const body = card.querySelector('.trace-card-body');
+    body.classList.toggle('open');
+  };
+  card.appendChild(header);
+
+  // Build prompt text from messages
+  const promptText = (entry.input_messages || [])
+    .map(m => `[${m.role}]\n${m.content}`)
+    .join('\n\n---\n\n');
+  const truncPrompt = promptText.length > 8000 ? promptText.slice(0, 8000) + '\n...(truncated)' : promptText;
+  const truncResponse = (entry.output_text || '').length > 8000
+    ? (entry.output_text || '').slice(0, 8000) + '\n...(truncated)'
+    : (entry.output_text || '');
+
+  const body = document.createElement('div');
+  body.className = 'trace-card-body';
+  body.innerHTML = `
+    <div class="trace-section-label">
+      📤 Prompt (${entry.prompt_tokens || 0} tok)
+      <button onclick="event.stopPropagation(); copyTraceText('${cardId}_prompt')">📋 复制</button>
+    </div>
+    <div class="trace-prompt" id="${cardId}_prompt">${escapeHtml(truncPrompt)}</div>
+    <div class="trace-section-label">
+      📥 Response (${entry.completion_tokens || 0} tok)
+      <button onclick="event.stopPropagation(); copyTraceText('${cardId}_response')">📋 复制</button>
+    </div>
+    <div class="trace-response" id="${cardId}_response">${escapeHtml(truncResponse)}</div>
+  `;
+  card.appendChild(body);
+  return card;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+window.copyTraceText = function(elementId) {
+  const el = document.getElementById(elementId);
+  if (el) {
+    navigator.clipboard.writeText(el.textContent).then(() => {
+      addLog('📋 已复制到剪贴板', 'info');
+    });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  DIFF REVIEW (v2.4.0)
+// ═══════════════════════════════════════════════════════════════
+window.showDiffReview = function(data) {
+  const overlay = document.getElementById('diff-review-overlay');
+  document.getElementById('review-filepath').textContent = data.filepath || '?';
+  document.getElementById('review-similarity').textContent = 
+    data.similarity ? `${(data.similarity * 100).toFixed(0)}%` : '?';
+  
+  // Render diff with colors
+  const diffEl = document.getElementById('diff-review-diff');
+  const lines = (data.diff || '').split('\n');
+  diffEl.innerHTML = lines.map(line => {
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      return `<div class="diff-add">${escHtml(line)}</div>`;
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      return `<div class="diff-del">${escHtml(line)}</div>`;
+    } else {
+      return `<div class="diff-ctx">${escHtml(line)}</div>`;
+    }
+  }).join('');
+  
+  overlay.classList.add('visible');
+  addLog(`📝 等待审核: ${data.filepath} (匹配度 ${(data.similarity * 100).toFixed(0)}%)`, 'info');
+};
+
+window.sendDiffDecision = function(action) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'user_command', data: { action } }));
+  }
+  document.getElementById('diff-review-overlay').classList.remove('visible');
+  addLog(`📝 审核决定: ${action === 'accept_diff' ? '✅ 接受' : '❌ 拒绝'}`, 'info');
+};
+
+// sendRoundCommand — used by the round-end awaiting_input banner buttons (v2.10)
+window.sendRoundCommand = function(action) {
+  clearInterval(window._awaitingTimer);
+  // Hide the banner immediately
+  const banner = document.getElementById('awaiting-banner');
+  if (banner) banner.style.display = 'none';
+  // Send the command to the backend
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'user_command', data: { action } }));
+    addLog(`🎮 用户操作: ${action === 'continue' ? '▶ 继续下一轮' : '■ 停止优化'}`, 'info');
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  WEBSOCKET CONNECTION
+// ═══════════════════════════════════════════════════════════════
+let ws = null;
+let reconnectTimer = null;
+const timings = {};
+let currentRoundTimings = {};
+let currentRoundNodes = 0;
+let currentRoundDiffs = 0;
+let currentRoundNum = 0;
+let currentTasks = [];
+let currentTaskStatuses = {};
+let selectedReviewTaskId = null;
+let optimizationFinished = false;
+let shutdownCountdownActive = false;
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  
+  ws.onopen = () => {
+    document.getElementById('connection-badge').className = 'connected';
+    document.getElementById('connection-badge').textContent = '● 已连接';
+    document.getElementById('status-dot').className = 'status-dot';
+    addLog('WebSocket 已连接', 'node-complete');
+  };
+  
+  ws.onclose = () => {
+    document.getElementById('connection-badge').className = 'disconnected';
+    document.getElementById('connection-badge').textContent = optimizationFinished ? '● 已完成' : '● 未连接';
+    document.getElementById('status-dot').className = 'status-dot idle';
+    if (optimizationFinished) {
+      addLog('优化完成，后台会话已结束', 'info');
+      return;
+    }
+    addLog('连接断开，5秒后重连...', 'node-error');
+    reconnectTimer = setTimeout(connect, 5000);
+  };
+  
+  ws.onerror = () => {};
+  
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      handleEvent(msg);
+    } catch (e) {
+      console.error('Failed to parse:', event.data);
+    }
+  };
+}
+
+function renderTaskStrip() {
+  const strip = document.getElementById('task-strip');
+  if (!currentTasks.length) {
+    strip.innerHTML = '<div class="task-strip-empty">No active tasks yet.</div>';
+    return;
+  }
+  strip.innerHTML = currentTasks.map(task => {
+    const status = currentTaskStatuses[task.id] || 'pending';
+    const file = task.filepath || 'unscoped';
+    return `
+      <div class="task-chip ${status}" onclick="openTaskDetail('${task.id}')">
+        <div class="task-file">${file}</div>
+        <div class="task-title">${task.title || task.detail || task.id}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function setActiveTasks(tasks, status = 'pending') {
+  currentTasks = Array.isArray(tasks) ? tasks.map(normalizeTask) : [];
+  currentTaskStatuses = {};
+  currentTasks.forEach(task => { currentTaskStatuses[task.id] = status; });
+  renderTaskStrip();
+}
+
+function normalizeTask(task, index = 0) {
+  const safeTask = (task && typeof task === 'object') ? task : {};
+  return {
+    id: String(safeTask.id || `task_${index + 1}`),
+    index: Number.isFinite(safeTask.index) ? safeTask.index : index,
+    title: String(safeTask.title || safeTask.detail || `Task ${index + 1}`),
+    filepath: String(safeTask.filepath || ''),
+    detail: String(safeTask.detail || safeTask.title || 'No detail available.'),
+    acceptance_checks: Array.isArray(safeTask.acceptance_checks)
+      ? safeTask.acceptance_checks.map(check => String(check))
+      : [],
+  };
+}
+
+function renderTaskDetail(task, prefix) {
+  document.getElementById(`${prefix}-title`).textContent = task.title || 'Task Detail';
+  document.getElementById(`${prefix}-file`).textContent = task.filepath || 'No file scope';
+  document.getElementById(`${prefix}-body`).textContent = task.detail || 'No detail available.';
+  const checks = document.getElementById(`${prefix}-checks`)
+    || document.getElementById(prefix === 'task-review-detail' ? 'task-review-checks' : '');
+  if (checks) {
+    checks.innerHTML = (task.acceptance_checks || []).map(check => `<li>${escHtml(check)}</li>`).join('');
+  }
+}
+
+window.openTaskDetail = function(taskId) {
+  const task = currentTasks.find(item => item.id === taskId);
+  if (!task) return;
+  renderTaskDetail(task, 'task-detail');
+  document.getElementById('task-detail-overlay').classList.add('visible');
+};
+
+window.closeTaskDetail = function() {
+  document.getElementById('task-detail-overlay').classList.remove('visible');
+};
+
+function renderTaskReview(tasks) {
+  const list = document.getElementById('task-review-list');
+  const safeTasks = Array.isArray(tasks) ? tasks.map(normalizeTask) : [];
+  selectedReviewTaskId = safeTasks[0] ? safeTasks[0].id : null;
+  list.innerHTML = safeTasks.map(task => `
+    <label class="review-item ${task.id === selectedReviewTaskId ? 'active' : ''}" data-task-id="${escHtml(task.id)}">
+      <input type="checkbox" class="task-review-checkbox" value="${escHtml(task.id)}" checked>
+      <div>
+        <div class="review-item-title">${escHtml(task.title || task.detail || task.id)}</div>
+        <div class="review-item-file">${escHtml(task.filepath || 'No file scope')}</div>
+      </div>
+    </label>
+  `).join('');
+  list.querySelectorAll('.review-item').forEach(item => {
+    item.addEventListener('click', () => selectReviewTask(item.dataset.taskId || ''));
+  });
+  list.querySelectorAll('.task-review-checkbox').forEach(checkbox => {
+    checkbox.addEventListener('click', (event) => event.stopPropagation());
+  });
+  if (safeTasks[0]) {
+    renderTaskDetail(safeTasks[0], 'task-review-detail');
+  }
+}
+
+window.selectReviewTask = function(taskId) {
+  selectedReviewTaskId = taskId;
+  document.querySelectorAll('#task-review-list .review-item').forEach(el => el.classList.remove('active'));
+  const selected = Array.from(document.querySelectorAll('#task-review-list .review-item'))
+    .find(el => el.dataset.taskId === taskId);
+  if (selected) selected.classList.add('active');
+  const task = currentTasks.find(item => item.id === taskId);
+  if (task) renderTaskDetail(task, 'task-review-detail');
+};
+
+window.closeTaskReview = function() {
+  document.getElementById('task-review-overlay').classList.remove('visible');
+};
+
+window.submitTaskReview = function(approve) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const selectedIds = Array.from(document.querySelectorAll('.task-review-checkbox:checked')).map(el => el.value);
+  const note = document.getElementById('task-review-note').value.trim();
+  ws.send(JSON.stringify({
+    type: 'user_command',
+    data: approve
+      ? { action: 'approve_plan', approved_task_ids: selectedIds, note }
+      : { action: 'replan_plan', approved_task_ids: [], note }
+  }));
+  if (approve) {
+    currentTasks.forEach(task => {
+      currentTaskStatuses[task.id] = selectedIds.includes(task.id) ? 'approved' : 'rejected';
+    });
+  }
+  renderTaskStrip();
+  closeTaskReview();
+};
+
+window.showTaskReview = function(data) {
+  currentTasks = Array.isArray(data.tasks) ? data.tasks.map(normalizeTask) : [];
+  currentTaskStatuses = {};
+  currentTasks.forEach(task => { currentTaskStatuses[task.id] = 'pending'; });
+  renderTaskStrip();
+  renderTaskReview(currentTasks);
+  
+  const pmSummaryStr = data.contract && data.contract.product_manager_summary;
+  const pmEl = document.getElementById('task-review-pm-summary');
+  if (pmEl) {
+    if (pmSummaryStr) {
+      pmEl.innerHTML = `<strong>💡 产品价值（大白话）:</strong><br/><span style="color:var(--text-secondary);font-size:12px;">${escHtml(pmSummaryStr)}</span>`;
+      pmEl.style.display = 'block';
+    } else {
+      pmEl.style.display = 'none';
+    }
+  }
+
+  document.getElementById('task-review-note').value = '';
+  document.getElementById('task-review-overlay').classList.add('visible');
+};
+
+function updateCompletionCountdown(remainingSeconds) {
+  const el = document.getElementById('completion-countdown');
+  if (!el) return;
+  const seconds = Number(remainingSeconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    shutdownCountdownActive = false;
+    el.textContent = '';
+    return;
+  }
+  shutdownCountdownActive = true;
+  el.textContent = `会话将在 ${seconds}s 后自动结束`;
+}
+
+function handleEvent(msg) {
+  try {
+    const { type, data } = msg || {};
+    
+    switch (type) {
+    case 'connected':
+      addLog(data.message || 'Connected', 'info');
+      break;
+
+    case 'awaiting_input': {
+      // Show round-end notification banner with countdown
+      const round = data.round || currentRoundNum;
+      const timeout = data.timeout_seconds || 30;
+      document.getElementById('awaiting-round').textContent = round;
+      const banner = document.getElementById('awaiting-banner');
+      banner.style.display = 'flex';
+      let remaining = timeout;
+      document.getElementById('awaiting-countdown').textContent = remaining;
+      clearInterval(window._awaitingTimer);
+      window._awaitingTimer = setInterval(() => {
+        remaining--;
+        const el = document.getElementById('awaiting-countdown');
+        if (el) el.textContent = remaining;
+        if (remaining <= 0) {
+          clearInterval(window._awaitingTimer);
+          // Timeout: send continue automatically (mirrors backend auto-continue)
+          sendRoundCommand('continue');
+        }
+      }, 1000);
+      addLog(`⏳ 第 ${round} 轮完成，${timeout}s 后自动继续...`, 'info');
+      break;
+    }
+
+    case 'task_plan_active':
+      setActiveTasks(data.tasks || [], data.review_required ? 'pending' : 'approved');
+      addLog(`🧾 Received ${((data.tasks || []).length)} planned tasks`, 'info');
+      break;
+
+    case 'plan_review_required':
+      addLog(`👀 Task review required for round ${data.round || '?'}`, 'info');
+      showTaskReview(data);
+      break;
+
+    case 'plan_review_result':
+      if (data.status === 'approved') {
+        setActiveTasks(data.tasks || currentTasks, 'approved');
+        addLog('✅ Task batch approved', 'node-complete');
+      } else {
+        addLog(`🔁 Task batch rejected: ${data.reason || 'replan requested'}`, 'info');
+      }
+      break;
+      
+    case 'node_start':
+      moveToStation(data.node);
+      document.getElementById('current-node').textContent = NODE_LABELS[data.node] || data.node;
+      document.getElementById('status-dot').className = 'status-dot';
+      if (data.round) {
+        currentRoundNum = data.round;
+        document.getElementById('stat-round').textContent = `#${data.round}`;
+        document.getElementById('round-info').textContent = `Round ${data.round}`;
+      }
+      addLog(`▶ ${data.node} 开始执行...`, 'node-start');
+      const idx = NODES.indexOf(data.node);
+      if (idx >= 0) {
+        document.getElementById('progress-bar').style.width = `${((idx) / NODES.length) * 100}%`;
+      }
+      break;
+      
+    case 'node_complete':
+      celebrateAt(data.node);
+      completedNodes++;
+      currentRoundNodes++;
+      document.getElementById('stat-nodes').textContent = completedNodes;
+      if (data.elapsed) {
+        totalElapsed += parseFloat(data.elapsed);
+        document.getElementById('stat-time').textContent = `${totalElapsed.toFixed(1)}s`;
+        timings[data.node] = parseFloat(data.elapsed);
+        currentRoundTimings[data.node] = parseFloat(data.elapsed);
+        updateTimingBars(timings);
+      }
+      addLog(`✔ ${data.node} 完成 (${data.elapsed || '?'}s)`, 'node-complete');
+      const cidx = NODES.indexOf(data.node);
+      if (cidx >= 0) {
+        document.getElementById('progress-bar').style.width = `${((cidx + 1) / NODES.length) * 100}%`;
+      }
+      break;
+      
+    case 'node_error':
+      errorAt(data.node);
+      document.getElementById('status-dot').className = 'status-dot error';
+      addLog(`✖ ${data.node} 错误: ${data.error || 'unknown'}`, 'node-error');
+      break;
+      
+    case 'round_start':
+      currentRoundNum = data.round || 0;
+      currentRoundTimings = {};
+      currentRoundNodes = 0;
+      currentRoundDiffs = 0;
+      document.getElementById('stat-round').textContent = `#${data.round || '?'}`;
+      addLog(`🔄 第 ${data.round} 轮开始`, 'node-start');
+      document.getElementById('progress-bar').style.width = '0%';
+      break;
+      
+    case 'round_end':
+      addLog(`🏁 第 ${data.round} 轮完成`, 'node-complete');
+      // Save round data
+      addRoundData(data.round, {
+        nodesCompleted: currentRoundNodes,
+        elapsed: Object.values(currentRoundTimings).reduce((a,b) => a+b, 0),
+        timings: { ...currentRoundTimings },
+        diffsCount: currentRoundDiffs,
+      });
+      // Full fireworks
+      for (const name of NODES) {
+        const s = STATIONS[name];
+        setTimeout(() => spawnParticles(s.x, 3, s.z, NODE_COLORS[name], 20), Math.random() * 1000);
+      }
+      break;
+      
+    case 'log':
+      addLog(data.message || '', data.level || 'info');
+      break;
+      
+    case 'cost_update':
+      if (data.calls) document.getElementById('stat-calls').textContent = data.calls;
+      break;
+      
+    case 'news_data':
+      if (data.headlines && data.headlines.length) {
+        // Sanitize: extract string from objects like {content: '...', url: ''}
+        newsHeadlines = data.headlines.map(h => {
+          if (typeof h === 'string') return h;
+          if (typeof h === 'object' && h !== null) return h.content || h.title || h.text || h.headline || JSON.stringify(h);
+          return String(h);
+        });
+        addLog(`💬 收到 ${data.headlines.length} 条新闻`, 'info');
+      }
+      break;
+    
+    case 'diff_update':
+      // { files: [{filename, content}] }
+      if (data.files && data.files.length) {
+        data.files.forEach(f => allDiffs.unshift(f));
+        currentRoundDiffs += data.files.length;
+        renderDiffs();
+        // Flash the diff tab
+        const diffTab = document.querySelector('[data-tab="tab-diff"]');
+        diffTab.style.color = 'var(--accent-green)';
+        setTimeout(() => diffTab.style.color = '', 2000);
+        addLog(`📝 收到 ${data.files.length} 个文件的 diff`, 'info');
+      }
+      break;
+
+    case 'round_summary':
+      // Explicit round summary from backend
+      if (data.round) {
+        addRoundData(data.round, data);
+      }
+      break;
+
+    case 'optimization_complete':
+      optimizationFinished = true;
+      moveToStation('interact');
+      document.getElementById('status-dot').className = 'status-dot idle';
+      document.getElementById('current-node').textContent = '✅ 优化完成';
+      document.getElementById('connection-badge').className = 'connected';
+      document.getElementById('connection-badge').textContent = '● 已完成';
+      document.getElementById('progress-bar').style.width = '100%';
+      addLog(`🎉 优化完成！共 ${data.total_rounds || '?'} 轮`, 'node-complete');
+      // Show completion overlay
+      document.getElementById('completion-goal').textContent = `🎯 ${data.goal || ''}`;
+      document.getElementById('comp-rounds').textContent = data.total_rounds || '?';
+      document.getElementById('comp-nodes').textContent = completedNodes;
+      document.getElementById('comp-time').textContent = `${totalElapsed.toFixed(0)}s`;
+      document.getElementById('completion-suggestions').textContent = data.suggestions || '无建议';
+      updateCompletionCountdown(data.shutdown_in_seconds || 0);
+      document.getElementById('completion-overlay').classList.add('visible');
+      // Grand fireworks
+      for (let i = 0; i < 3; i++) {
+        setTimeout(() => {
+          for (const name of NODES) {
+            const s = STATIONS[name];
+            spawnParticles(s.x, 3, s.z, NODE_COLORS[name], 30);
+          }
+        }, i * 800);
+      }
+      break;
+
+    case 'server_shutdown_countdown':
+      optimizationFinished = true;
+      updateCompletionCountdown(data.remaining_seconds || 0);
+      break;
+
+    case 'round_history_update':
+      // Store detail for expandable round cards (v2.3.0)
+      if (data.round) {
+        roundDetailStore[data.round] = data;
+        renderRounds(); // Re-render to include new detail
+        // Flash the rounds tab
+        const rTab = document.querySelector('[data-tab="tab-rounds"]');
+        if (rTab) { rTab.style.color = 'var(--accent-purple)'; setTimeout(() => rTab.style.color = '', 2000); }
+        addLog(`📊 第 ${data.round} 轮详情已更新`, 'info');
+      }
+      break;
+
+    case 'full_history':
+      // Bulk load round details (v2.3.0)
+      if (data.rounds) {
+        data.rounds.forEach(r => { if (r.round) roundDetailStore[r.round] = r; });
+        renderRounds();
+        addLog(`📜 加载了 ${data.rounds.length} 轮历史详情`, 'info');
+      }
+      break;
+
+    case 'diff_review':
+      // Show diff review modal (v2.4.0)
+      showDiffReview(data);
+      break;
+      
+    default:
+      addLog(`[${type}] ${JSON.stringify(data)}`, 'info');
+    }
+  } catch (error) {
+    console.error('handleEvent failed:', msg, error);
+    addLog(`UI event error: ${error?.message || error}`, 'node-error');
+  }
+}
+
+window.handleEvent = handleEvent;
+
+// Start connection
+connect();
+
+// ═══════════════════════════════════════════════════════════════
+//  DEMO MODE (works without backend — double-click canvas)
+// ═══════════════════════════════════════════════════════════════
+let demoIndex = 0;
+canvas.addEventListener('dblclick', () => {
+  const node = NODES[demoIndex % NODES.length];
+  const round = Math.floor(demoIndex / NODES.length) + 1;
+  if (demoIndex % NODES.length === 0) {
+    handleEvent({ type: 'round_start', data: { round } });
+  }
+  handleEvent({ type: 'node_start', data: { node, round } });
+  setTimeout(() => {
+    const elapsed = (Math.random() * 5 + 1).toFixed(1);
+    handleEvent({ type: 'node_complete', data: { node, elapsed } });
+    // Demo diff
+    if (node === 'execute') {
+      handleEvent({ type: 'diff_update', data: { files: [{
+        filename: `src/demo_${round}.py`,
+        content: `@@ -10,3 +10,5 @@\n def hello():\n-    print("old")\n+    print("new")\n+    return True`
+      }]}});
+    }
+    // Demo round_end
+    if ((demoIndex % NODES.length) === NODES.length - 1) {
+      setTimeout(() => handleEvent({ type: 'round_end', data: { round } }), 500);
+    }
+  }, 2000);
+  demoIndex++;
+});
+
+addLog('🎮 双击 3D 场景可进入演示模式', 'info');
+addLog(`🔌 等待优化器连接 (${WS_URL})...`, 'info');
+
+</script>
+</body>
+</html>

@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPC Optimizer - 启动</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #1a1a2e;
+  color: #eee;
+  font-family: 'Courier New', monospace;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(88, 166, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(88, 166, 255, 0.03) 1px, transparent 1px);
+  background-size: 16px 16px;
+  z-index: 0;
+}
+
+.landing-card {
+  position: relative;
+  z-index: 1;
+  width: min(560px, calc(100vw - 32px));
+  background: #0d1117;
+  border: 2px solid #30363d;
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(88, 166, 255, 0.08);
+}
+
+.logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.logo .icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 0 12px rgba(88, 166, 255, 0.4));
+}
+
+.logo h1 {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 16px;
+  color: #58a6ff;
+  text-shadow: 0 0 20px rgba(88, 166, 255, 0.5);
+  letter-spacing: 2px;
+}
+
+.logo .sub {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8b949e;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  color: #8b949e;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #e6edf3;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.2);
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: #484f58;
+}
+
+.goal-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.goal-chip {
+  padding: 5px 12px;
+  border: 1px solid #30363d;
+  border-radius: 16px;
+  background: #161b22;
+  color: #8b949e;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.goal-chip:hover {
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+.goal-chip.selected {
+  border-color: #3fb950;
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.08);
+}
+
+.path-status {
+  font-size: 11px;
+  margin-top: 4px;
+  min-height: 16px;
+}
+
+.path-status.valid { color: #3fb950; }
+.path-status.invalid { color: #f85149; }
+.path-status.checking { color: #8b949e; }
+
+.options-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.options-row .form-group {
+  margin-bottom: 0;
+}
+
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8b949e;
+  font-size: 12px;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.advanced-toggle:hover { color: #58a6ff; }
+
+.advanced-toggle .arrow {
+  transition: transform 0.2s;
+}
+
+.advanced-toggle.open .arrow {
+  transform: rotate(90deg);
+}
+
+.advanced-panel {
+  display: none;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: rgba(22, 27, 34, 0.5);
+}
+
+.advanced-panel.open {
+  display: block;
+}
+
+.adv-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.adv-row .form-group {
+  margin-bottom: 0;
+}
+
+.adv-row label {
+  font-size: 10px;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #8b949e;
+}
+
+.switch-row + .switch-row {
+  margin-top: 10px;
+}
+
+.switch-row input[type="checkbox"] {
+  accent-color: #3fb950;
+}
+
+.start-btn {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #238636, #2ea043);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.3s;
+  box-shadow: 0 4px 16px rgba(46, 160, 67, 0.3);
+  letter-spacing: 1px;
+}
+
+.start-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(46, 160, 67, 0.5);
+}
+
+.start-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.status-line {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 12px;
+  color: #8b949e;
+  min-height: 18px;
+}
+
+.status-line.error { color: #f85149; }
+.status-line.success { color: #3fb950; }
+
+.deco-blocks {
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.deco-block {
+  position: absolute;
+  border-radius: 3px;
+  opacity: 0.08;
+}
+
+@media (max-width: 640px) {
+  .landing-card {
+    padding: 24px;
+  }
+
+  .options-row,
+  .adv-row {
+    grid-template-columns: 1fr;
+  }
+
+  .logo h1 {
+    font-size: 14px;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="deco-blocks" id="deco"></div>
+
+<div class="landing-card">
+  <div class="logo">
+    <span class="icon">⚙️</span>
+    <h1>OPC OPTIMIZER</h1>
+    <div class="sub">Local Code Optimization Workflow</div>
+  </div>
+
+  <div class="form-group">
+    <label>📨 项目路径</label>
+    <div style="display: flex; gap: 8px;">
+      <input type="text" id="project-path" placeholder="D:\my-project 或 /home/user/project" autocomplete="off" style="flex: 1;">
+      <button id="browse-btn" onclick="browseFolder()" style="padding: 0 16px; background: #21262d; border: 1px solid #30363d; border-radius: 8px; color: #8b949e; font-family: 'Courier New', monospace; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#58a6ff'; this.style.color='#58a6ff';" onmouseout="this.style.borderColor='#30363d'; this.style.color='#8b949e';">📁 浏览</button>
+    </div>
+    <div class="path-status" id="path-status"></div>
+  </div>
+
+  <div class="form-group">
+    <label>🎯 优化目标</label>
+    <div class="goal-presets" id="goal-presets">
+      <span class="goal-chip" data-goal="提升代码性能，减少不必要的计算和内存分配">性能优化</span>
+      <span class="goal-chip" data-goal="重构代码架构，提升模块化和可维护性">重构架构</span>
+      <span class="goal-chip" data-goal="增加单元测试，提升代码覆盖率">增加测试</span>
+      <span class="goal-chip" data-goal="检查并修复潜在 Bug 和边界情况">修复 Bug</span>
+      <span class="goal-chip" data-goal="统一代码风格，补充类型标注和必要文档">代码规范</span>
+      <span class="goal-chip" data-goal="检查安全隐患，加强输入校验和权限控制">安全加固</span>
+    </div>
+    <textarea id="goal" placeholder="选择上方预设，或输入你自己的优化目标"></textarea>
+  </div>
+
+  <div class="options-row">
+    <div class="form-group">
+      <label>🔁 最大轮次</label>
+      <select id="max-rounds">
+        <option value="1">1 轮</option>
+        <option value="2">2 轮</option>
+        <option value="3" selected>3 轮</option>
+        <option value="5">5 轮</option>
+        <option value="10">10 轮</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>🤖 LLM 模型</label>
+      <select id="model">
+        <option value="">默认</option>
+        <option value="openai/gpt-4o">GPT-4o</option>
+        <option value="openai/gpt-4o-mini">GPT-4o-mini</option>
+        <option value="anthropic/claude-sonnet-4-20250514">Claude Sonnet</option>
+        <option value="deepseek/deepseek-chat">DeepSeek</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="advanced-toggle" id="adv-toggle" onclick="toggleAdvanced()">
+    <span class="arrow">▶</span> ⚙️ 高级配置
+  </div>
+
+  <div class="advanced-panel" id="adv-panel">
+    <div class="adv-row">
+      <div class="form-group">
+        <label>🧹 格式化工具</label>
+        <select id="adv-formatter">
+          <option value="auto">自动检测</option>
+          <option value="black">Black (Python)</option>
+          <option value="ruff format">Ruff (Python)</option>
+          <option value="prettier --write">Prettier (JS/TS)</option>
+          <option value="none">禁用</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>⏱️ 超时（秒）</label>
+        <input type="number" id="adv-timeout" value="120" min="30" max="600">
+      </div>
+    </div>
+
+    <div class="switch-row">
+      <input type="checkbox" id="adv-dryrun">
+      <label for="adv-dryrun">🏜️ Dry Run，仅预览不修改文件</label>
+    </div>
+
+    <div class="switch-row">
+      <input type="checkbox" id="adv-skip-review">
+      <label for="adv-skip-review">AI 任务无需审核，直接全自动执行</label>
+    </div>
+  </div>
+
+  <button class="start-btn" id="start-btn" onclick="startOptimization()">▶ 开始优化</button>
+
+  <div class="status-line" id="status">等待连接服务...</div>
+</div>
+
+<script>
+const deco = document.getElementById('deco');
+for (let i = 0; i < 30; i++) {
+  const block = document.createElement('div');
+  block.className = 'deco-block';
+  const size = 20 + Math.random() * 40;
+  const colors = ['#58a6ff', '#3fb950', '#f0883e', '#bc8cff', '#f78166'];
+  block.style.cssText = `
+    width: ${size}px;
+    height: ${size}px;
+    left: ${Math.random() * 100}vw;
+    top: ${Math.random() * 100}vh;
+    background: ${colors[Math.floor(Math.random() * colors.length)]};
+    transform: rotate(${Math.random() * 45}deg);
+  `;
+  deco.appendChild(block);
+}
+
+const HTTP_PORT = Number.parseInt(location.port || '8765', 10) || 8765;
+const WS_PORT = HTTP_PORT + 1;
+const WS_PROTOCOL = location.protocol === 'https:' ? 'wss' : 'ws';
+const WS_URL = `${WS_PROTOCOL}://${location.hostname}:${WS_PORT}`;
+let ws = null;
+let pathDebounce = null;
+
+function setStatus(text, type = '') {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = `status-line${type ? ` ${type}` : ''}`;
+}
+
+function handleSocketMessage(event) {
+  try {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'optimization_started') {
+      setStatus('优化已启动，正在跳转...', 'success');
+      setTimeout(() => {
+        window.location.href = '/index.html';
+      }, 1000);
+      return;
+    }
+    if (msg.type === 'path_validation') {
+      const ps = document.getElementById('path-status');
+      ps.textContent = msg.data.message || '';
+      ps.className = `path-status ${msg.data.valid ? 'valid' : 'invalid'}`;
+      return;
+    }
+    if (msg.type === 'folder_selected') {
+      const pathInput = document.getElementById('project-path');
+      pathInput.value = msg.data.path;
+      pathInput.dispatchEvent(new Event('input'));
+      setStatus('已选择文件夹', 'success');
+      return;
+    }
+  } catch (_) {}
+}
+
+function browseFolder() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'browse_folder' }));
+    setStatus('正在打开本地文件夹选择器...', 'checking');
+  } else {
+    setStatus('未连接到服务端', 'error');
+  }
+}
+
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => setStatus('服务已连接', 'success');
+  ws.onclose = () => {
+    setStatus('服务未连接，正在重试...', 'error');
+    setTimeout(connectWS, 3000);
+  };
+  ws.onmessage = handleSocketMessage;
+}
+
+function toggleAdvanced() {
+  const toggle = document.getElementById('adv-toggle');
+  const panel = document.getElementById('adv-panel');
+  toggle.classList.toggle('open');
+  panel.classList.toggle('open');
+}
+
+function startOptimization() {
+  const path = document.getElementById('project-path').value.trim();
+  const goal = document.getElementById('goal').value.trim();
+  const maxRounds = document.getElementById('max-rounds').value;
+  const model = document.getElementById('model').value;
+
+  if (!path) {
+    setStatus('请输入项目路径', 'error');
+    document.getElementById('project-path').focus();
+    return;
+  }
+
+  if (!goal) {
+    setStatus('请输入优化目标', 'error');
+    document.getElementById('goal').focus();
+    return;
+  }
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    setStatus('未连接到服务端', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  btn.textContent = '启动中...';
+
+  ws.send(JSON.stringify({
+    type: 'start_optimization',
+    data: {
+      path,
+      goal,
+      max_rounds: parseInt(maxRounds, 10),
+      model: model || null,
+      formatter: document.getElementById('adv-formatter').value !== 'auto'
+        ? document.getElementById('adv-formatter').value
+        : null,
+      timeout: parseInt(document.getElementById('adv-timeout').value, 10) || 120,
+      dry_run: document.getElementById('adv-dryrun').checked,
+      skip_plan_review: document.getElementById('adv-skip-review').checked
+    }
+  }));
+
+  setStatus('配置已发送，等待任务启动...');
+}
+
+document.querySelectorAll('.goal-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    chip.classList.toggle('selected');
+    const selected = [];
+    document.querySelectorAll('.goal-chip.selected').forEach(item => {
+      selected.push(item.getAttribute('data-goal'));
+    });
+    document.getElementById('goal').value = selected.join('\n');
+  });
+});
+
+document.getElementById('project-path').addEventListener('input', (event) => {
+  clearTimeout(pathDebounce);
+  const path = event.target.value.trim();
+  const status = document.getElementById('path-status');
+  if (!path) {
+    status.textContent = '';
+    status.className = 'path-status';
+    return;
+  }
+  status.textContent = '检查中...';
+  status.className = 'path-status checking';
+  pathDebounce = setTimeout(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'validate_path', data: { path } }));
+    }
+  }, 500);
+});
+
+document.getElementById('project-path').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    document.getElementById('goal').focus();
+  }
+});
+
+connectWS();
+</script>
+</body>
+</html>

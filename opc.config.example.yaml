@@ -1,0 +1,46 @@
+# OPC Local Optimizer 配置文件示例
+# 将此文件复制为 opc.config.yaml 放在项目根目录即可生效
+# 优先级: CLI 参数 > 项目 opc.config.yaml > 全局 ~/.opc/config.yaml > 默认值
+
+# 优化目标
+goal: "提升代码质量、性能和架构"
+
+# 最大优化轮数
+max_rounds: 5
+
+# 每 N 轮归档一次历史数据
+archive_every: 3
+
+# 模拟执行模式（不修改文件）
+dry_run: false
+
+# 全自动模式（跳过交互环节）
+auto: false
+
+# LLM 模型名称 (litellm 格式)
+# model: "openai/gpt-4o"
+
+# LLM 调用超时 (秒)
+timeout: 120
+
+# 构建命令超时 (秒)
+build_timeout: 120
+
+# 日志级别
+log_level: INFO
+
+# 文件大小限制 (字节), 超过此大小的文件将被截断
+max_file_size: 512000
+
+# 允许扫描的文件扩展名
+allowed_extensions:
+  - .py
+  - .js
+  - .ts
+  - .java
+  - .kt
+  - .go
+  - .rs
+  - .c
+  - .cpp
+  - .h
