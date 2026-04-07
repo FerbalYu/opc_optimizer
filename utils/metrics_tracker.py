@@ -41,6 +41,25 @@ def _count_diff_lines(project_path: str, modified_files: List[str]) -> dict:
     return {"lines_added": added, "lines_removed": removed, "net_lines_delta": added - removed}
 
 
+def _infer_failure_type(state: dict, build_result: dict, round_evaluation: dict) -> str:
+    """Classify a round-level failure type for observability."""
+    explicit = state.get("failure_type")
+    if isinstance(explicit, str) and explicit.strip():
+        if explicit.strip().lower() != "none":
+            return explicit.strip().lower()
+        return "none"
+
+    if state.get("execution_errors"):
+        return "node_error"
+    if not bool(build_result.get("build_passed", True)):
+        return "build_failed"
+    if not bool(build_result.get("test_passed", True)):
+        return "test_failed"
+    if bool(round_evaluation.get("low_value_round")):
+        return "low_value"
+    return "none"
+
+
 def collect_round_metrics(state: dict) -> dict:
     """Collect quantifiable metrics from the current round state.
 
@@ -78,10 +97,15 @@ def collect_round_metrics(state: dict) -> dict:
         not build_result.get("build_passed", True)
         or bool(round_evaluation.get("low_value_round"))
     )
+    failure_type = _infer_failure_type(state, build_result, round_evaluation)
 
     return {
         "round": state.get("current_round", 1),
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "run_mode": state.get("run_mode", "legacy_mode"),
+        "skill_name": state.get("skill_name", "legacy_pipeline"),
+        "router_decision": state.get("router_decision", "legacy_linear"),
+        "failure_type": failure_type,
         "value_score": round_evaluation.get("value_score", 0),
         "build_passed": bool(build_result.get("build_passed", True)),
         "test_passed": bool(build_result.get("test_passed", True)),

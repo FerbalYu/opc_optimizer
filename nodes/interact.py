@@ -77,7 +77,7 @@ def _emit_stop_events(state: OptimizerState, stopped_round: int) -> None:
                 "final_diff": state.get("code_diff", ""),
                 "suggestions": state.get("suggestions", ""),
                 "reports": state.get("round_reports", []),
-                "shutdown_in_seconds": 0,
+                "shutdown_in_seconds": 15,
             },
         )
     except Exception:
@@ -230,7 +230,7 @@ def _try_web_ui_interact(state: OptimizerState) -> bool:
                     "final_diff": state.get("code_diff", ""),
                     "suggestions": state.get("suggestions", ""),
                     "reports": state.get("round_reports", []),
-                    "shutdown_in_seconds": 0,
+                    "shutdown_in_seconds": 15,
                 },
             )
 

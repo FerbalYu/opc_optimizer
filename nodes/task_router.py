@@ -77,6 +77,38 @@ def task_router_node(state: OptimizerState) -> OptimizerState:
 
     state["task_complexity"] = complexity
     state["fast_path"] = fast_path
+    state.setdefault("failure_type", "none")
+
+    # Phase 2 / P2-3: route failure must auto-fallback to legacy mode.
+    router_decision = f"task_router:complexity={complexity},fast_path={str(fast_path).lower()}"
+    run_mode = state.get("run_mode", "legacy_mode")
+    try:
+        if llm_config.get("force_router_error"):
+            raise RuntimeError("forced router failure for testing")
+
+        from utils.skill_router import route_skills
+
+        profile = ((state.get("preamble_context", {}) or {}).get("project_profile")) or {}
+        route_plan = route_skills(
+            goal=goal,
+            run_mode=run_mode,
+            project_profile=profile,
+            failure_type=state.get("failure_type", "none"),
+        )
+        state["run_mode"] = route_plan.mode
+        router_decision = route_plan.router_decision
+    except Exception as exc:
+        logger.warning("Skill router failed, fallback to legacy_mode: %s", exc)
+        state["run_mode"] = "legacy_mode"
+        state["failure_type"] = "router_failed"
+        router_decision = f"skill_router:fallback_legacy({type(exc).__name__})"
+
+    state["skill_name"] = (
+        "skill_pipeline"
+        if state.get("run_mode", "legacy_mode") == "skill_mode"
+        else "legacy_pipeline"
+    )
+    state["router_decision"] = router_decision
 
     logger.info(
         f"Round {current_round}: complexity={complexity}, fast_path={fast_path} "

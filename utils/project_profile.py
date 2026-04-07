@@ -462,12 +462,14 @@ def load_project_profile(project_path: str, llm=None) -> Dict[str, Any]:
     Returns:
         Project profile dict.
     """
+    legacy_cache_path = os.path.join(project_path, ".opclog", ".project_profile.json")
+
     # Use external workspace for cache (Opt-6)
     try:
         from utils.workspace import workspace_path
         cache_path = workspace_path(project_path, "cache", "project_profile.json")
     except Exception:
-        cache_path = os.path.join(project_path, ".opclog", ".project_profile.json")
+        cache_path = legacy_cache_path
     current_hash = _compute_root_hash(project_path)
 
     # Try cache
@@ -494,6 +496,12 @@ def load_project_profile(project_path: str, llm=None) -> Dict[str, Any]:
             # Convert any non-serializable items (like lambdas) — shouldn't be in profile
             json.dump(profile, f, indent=2, ensure_ascii=False)
         logger.info(f"Profile cached to {cache_path}")
+
+        # Backward-compatible mirror for tests/legacy readers expecting .opclog path.
+        if os.path.abspath(cache_path) != os.path.abspath(legacy_cache_path):
+            os.makedirs(os.path.dirname(legacy_cache_path), exist_ok=True)
+            with open(legacy_cache_path, "w", encoding="utf-8") as f:
+                json.dump(profile, f, indent=2, ensure_ascii=False)
     except OSError as e:
         logger.warning(f"Failed to write profile cache: {e}")
 
@@ -509,14 +517,22 @@ def invalidate_profile_cache(project_path: str) -> bool:
     Returns:
         True if cache was deleted, False if it didn't exist.
     """
+    legacy_cache_path = os.path.join(project_path, ".opclog", ".project_profile.json")
+    cache_paths = [legacy_cache_path]
+
     # Use external workspace for cache (Opt-6)
     try:
         from utils.workspace import workspace_path
-        cache_path = workspace_path(project_path, "cache", "project_profile.json")
+        cache_paths.insert(0, workspace_path(project_path, "cache", "project_profile.json"))
     except Exception:
-        cache_path = os.path.join(project_path, ".opclog", ".project_profile.json")
-    if os.path.isfile(cache_path):
-        os.remove(cache_path)
+        pass
+
+    deleted = False
+    for cache_path in cache_paths:
+        if os.path.isfile(cache_path):
+            os.remove(cache_path)
+            deleted = True
+
+    if deleted:
         logger.info("Profile cache invalidated")
-        return True
-    return False
+    return deleted

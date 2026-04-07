@@ -392,6 +392,16 @@ def plan_node(state: OptimizerState) -> OptimizerState:
     except Exception as e:
         logger.warning(f"Project profile loading failed: {e}")
 
+    # ── Unified skill preamble (Phase 2 / P2-2) ─────────────────
+    preamble_block = ""
+    try:
+        from utils.skill_preamble import inject_skill_preamble
+
+        preamble_text = inject_skill_preamble(state, project_profile=profile)
+        preamble_block = preamble_text + "\n"
+    except Exception as e:
+        logger.warning(f"Preamble injection failed in plan node: {e}")
+
     # ── SKILL 优化策略 (v2.12.0) ─────────────────────────────
     skill_content = ""
     try:
@@ -501,6 +511,7 @@ def plan_node(state: OptimizerState) -> OptimizerState:
 Target Project: {project_path}
 Optimization Goal: {goal}
 Current Round: {current_round}
+{preamble_block}
 
 Project File Structure:
 {file_tree}
@@ -549,6 +560,7 @@ Allowed target files:
 Target Project: {project_path}
 Optimization Goal: {goal}
 Current Round: {current_round} (Initial)
+{preamble_block}
 
 Project File Structure (sorted by complexity, most complex first):
 {file_tree}
@@ -673,6 +685,14 @@ Generate a different batch that better matches the feedback. Do not repeat the p
         contract_path = os.path.join(project_path, ".opclog", "round_contract.json")
     write_to_file(plan_path, plan)
     write_to_file(contract_path, json.dumps(contract, indent=2, ensure_ascii=False))
+
+    # Backward-compatible mirror for legacy readers/tests under project/.opclog.
+    legacy_plan_path = os.path.join(project_path, ".opclog", "plan.md")
+    legacy_contract_path = os.path.join(project_path, ".opclog", "round_contract.json")
+    if os.path.abspath(plan_path) != os.path.abspath(legacy_plan_path):
+        write_to_file(legacy_plan_path, plan)
+    if os.path.abspath(contract_path) != os.path.abspath(legacy_contract_path):
+        write_to_file(legacy_contract_path, json.dumps(contract, indent=2, ensure_ascii=False))
 
     state["current_plan"] = plan
     state["round_contract"] = contract

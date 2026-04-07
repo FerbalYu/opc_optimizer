@@ -1,18 +1,28 @@
 import logging
 import time
 import traceback
-from typing import Callable
+from typing import Callable, Optional
 
 from langgraph.graph import StateGraph, END
 
-from state import OptimizerState
-from nodes.plan import plan_node
-from nodes.execute import execute_node
-from nodes.test import test_node
-from nodes.archive import archive_node
-from nodes.report import report_node
-from nodes.interact import interact_node
-from nodes.task_router import task_router_node
+if __package__:
+    from .state import OptimizerState
+    from .nodes.plan import plan_node
+    from .nodes.execute import execute_node
+    from .nodes.test import test_node
+    from .nodes.archive import archive_node
+    from .nodes.report import report_node
+    from .nodes.interact import interact_node
+    from .nodes.task_router import task_router_node
+else:
+    from state import OptimizerState
+    from nodes.plan import plan_node
+    from nodes.execute import execute_node
+    from nodes.test import test_node
+    from nodes.archive import archive_node
+    from nodes.report import report_node
+    from nodes.interact import interact_node
+    from nodes.task_router import task_router_node
 
 logger = logging.getLogger("opc.graph")
 
@@ -21,11 +31,17 @@ def safe_node_wrapper(node_name: str, node_fn: Callable) -> Callable:
     """Wrap a node function with try-except, timing, tracing, and event emission."""
 
     def wrapper(state: OptimizerState) -> OptimizerState:
-        from utils.telemetry import trace_span
+        try:
+            from .utils.telemetry import trace_span
+        except ImportError:
+            from utils.telemetry import trace_span
 
         # Emit node_start event for Web UI
         try:
-            from ui.web_server import emit
+            try:
+                from .ui.web_server import emit
+            except ImportError:
+                from ui.web_server import emit
 
             emit(
                 "node_start",
@@ -42,7 +58,10 @@ def safe_node_wrapper(node_name: str, node_fn: Callable) -> Callable:
             try:
                 # Set trace context so LLM calls are tagged (v2.6.0)
                 try:
-                    from utils.trace_logger import get_trace_logger
+                    try:
+                        from .utils.trace_logger import get_trace_logger
+                    except ImportError:
+                        from utils.trace_logger import get_trace_logger
 
                     get_trace_logger().set_context(
                         node_name, state.get("current_round", 1)
@@ -70,7 +89,10 @@ def safe_node_wrapper(node_name: str, node_fn: Callable) -> Callable:
                         )
                 # Emit node_complete event
                 try:
-                    from ui.web_server import emit
+                    try:
+                        from .ui.web_server import emit
+                    except ImportError:
+                        from ui.web_server import emit
 
                     emit(
                         "node_complete",
@@ -173,7 +195,10 @@ def safe_node_wrapper(node_name: str, node_fn: Callable) -> Callable:
                 state["node_timings"] = timings
                 # Emit node_error event
                 try:
-                    from ui.web_server import emit
+                    try:
+                        from .ui.web_server import emit
+                    except ImportError:
+                        from ui.web_server import emit
 
                     emit(
                         "node_error",
@@ -206,33 +231,98 @@ def should_test(state: OptimizerState) -> str:
     return "run_test"
 
 
-def create_optimizer_graph(project_path: str = None):
+def _build_skill_dispatcher(skill_name: str, legacy_fn: Callable) -> Callable:
+    """Dispatch to skill bridge in skill_mode, otherwise keep legacy path."""
+
+    def dispatcher(state: OptimizerState) -> OptimizerState:
+        run_mode = state.get("run_mode", "legacy_mode")
+        if run_mode != "skill_mode":
+            state["skill_name"] = "legacy_pipeline"
+            return legacy_fn(state)
+
+        try:
+            try:
+                from .utils.skill_bridge import run_skill
+            except ImportError:
+                from utils.skill_bridge import run_skill
+            return run_skill(skill_name, state)
+        except Exception as exc:
+            logger.warning(
+                "Skill dispatch failed for '%s', fallback to legacy node: %s",
+                skill_name,
+                exc,
+            )
+            state["run_mode"] = "legacy_mode"
+            state["failure_type"] = "skill_dispatch_failed"
+            state["router_decision"] = (
+                f"skill_dispatch:fallback_legacy({skill_name}:{type(exc).__name__})"
+            )
+            state["skill_name"] = "legacy_pipeline"
+            return legacy_fn(state)
+
+    dispatcher.__name__ = f"{skill_name}_dispatcher"
+    return dispatcher
+
+
+def create_optimizer_graph(project_path: str = None, skill_registry: Optional[object] = None):
     """Build and compile the LangGraph workflow."""
 
     # Initialize the graph with the state schema
     workflow = StateGraph(OptimizerState)
 
+    # Load baseline skills from registry (Phase 1).
+    try:
+        from .utils.skill_registry import build_core_skill_registry
+    except ImportError:
+        from utils.skill_registry import build_core_skill_registry
+
+    registry = skill_registry or build_core_skill_registry()
+    required_core_skills = ("plan", "execute", "test", "report")
+    for name in required_core_skills:
+        spec = registry.get(name)
+        if spec is None:
+            raise ValueError(f"Missing required core skill registration: {name}")
+        if not spec.enabled:
+            raise ValueError(f"Required core skill is disabled: {name}")
+    logger.info(
+        "Core skills registered: %s",
+        ", ".join(s.name for s in registry.list(enabled_only=False)),
+    )
+
     # Add all nodes with error isolation
     workflow.add_node("task_router", safe_node_wrapper("task_router", task_router_node))
-    workflow.add_node("plan", safe_node_wrapper("plan", plan_node))
-    workflow.add_node("execute", safe_node_wrapper("execute", execute_node))
-    workflow.add_node("test", safe_node_wrapper("test", test_node))
-    workflow.add_node("archive", safe_node_wrapper("archive", archive_node))
-    workflow.add_node("report", safe_node_wrapper("report", report_node))
     workflow.add_node(
-        "interact", interact_node
+        "plan", safe_node_wrapper("plan", _build_skill_dispatcher("plan", plan_node))
+    )
+    workflow.add_node(
+        "execute",
+        safe_node_wrapper("execute", _build_skill_dispatcher("execute", execute_node)),
+    )
+    workflow.add_node(
+        "test", safe_node_wrapper("test", _build_skill_dispatcher("test", test_node))
+    )
+    workflow.add_node("archive", safe_node_wrapper("archive", archive_node))
+    workflow.add_node(
+        "report",
+        safe_node_wrapper("report", _build_skill_dispatcher("report", report_node)),
+    )
+    workflow.add_node(
+        "interact", _build_skill_dispatcher("interact", interact_node)
     )  # No wrapper — interact must propagate stop signals
 
     # Define the strict linear flow
     workflow.set_entry_point("task_router")
     workflow.add_edge("task_router", "plan")
 
-    # Build edge chain — start with default linear order (execute handled separately)
-    node_order = ["plan", "execute"]
+    # Build edge chain — default linear order (execute has conditional branch)
+    node_order = ["plan", "execute", "test", "archive", "report", "interact"]
 
     # ── Plugin injection (v2.2.0) ───────────────────────────────
     if project_path:
-        from plugins import discover_plugins
+        try:
+            from .plugins import discover_plugins
+        except ImportError:
+            from plugins import discover_plugins
 
         plugins = discover_plugins(project_path)
         for plugin in plugins:
@@ -242,47 +332,39 @@ def create_optimizer_graph(project_path: str = None):
                 idx = node_order.index(plugin.insert_after)
                 node_order.insert(idx + 1, plugin.name)
                 logger.info(
-                    f"Plugin '{plugin.name}' inserted after '{plugin.insert_after}'"
+                    f"Plugin '{plugin.name}' injected after '{plugin.insert_after}'"
                 )
             except ValueError:
-                # insert_after node not found — append before interact
-                node_order.insert(-1, plugin.name)
+                node_order.append(plugin.name)
                 logger.warning(
-                    f"Plugin '{plugin.name}': insert_after='{plugin.insert_after}' not found, appending before interact"
+                    f"Plugin '{plugin.name}' insert_after='{plugin.insert_after}' "
+                    f"not found; appending to end"
                 )
 
-    # Wire edges for plan → execute (plus any plugins inserted between them)
-    for i in range(len(node_order) - 1):
-        workflow.add_edge(node_order[i], node_order[i + 1])
-
-    # ── Conditional edge after execute: fast_path skips test ──────────────
+    # ── Conditional routing ──────────────────────────────────────
     workflow.add_conditional_edges(
         "execute",
         should_test,
         {
-            "run_test": "test",
-            "skip_test": "archive",  # jump straight to archive
+            "run_test": "test",  # Normal path: run test
+            "skip_test": "archive",  # Fast path: skip test
         },
     )
 
-    # Rest of the pipeline (test is already wired via conditional above)
-    tail_order = ["test", "archive", "report", "interact"]
-    for i in range(len(tail_order) - 1):
-        if tail_order[i + 1] != "interact":
-            workflow.add_edge(tail_order[i], tail_order[i + 1])
-        else:
-            workflow.add_edge(tail_order[i], "interact")
+    # Linear chain through remaining nodes
+    workflow.add_edge("test", "archive")
+    workflow.add_edge("archive", "report")
+    workflow.add_edge("report", "interact")
 
-    # Conditional edge to handle looping
+    # ── Loop back or end ──────────────────────────────────────────
     workflow.add_conditional_edges(
         "interact",
         should_continue,
         {
-            "continue": "task_router",  # re-classify every round
+            "continue": node_order[1],  # Loop back to execute for next round
             "end": END,
         },
     )
 
     # Compile the graph
-    app = workflow.compile()
-    return app
+    return workflow.compile()

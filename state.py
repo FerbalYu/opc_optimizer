@@ -54,6 +54,14 @@ class OptimizerStateModel(BaseModel):
     should_stop: bool = False
     auto_mode: bool = False
     dry_run: bool = False
+    run_mode: str = "legacy_mode"
+    skill_name: str = "legacy_pipeline"
+    router_decision: str = "legacy_linear"
+    failure_type: str = "none"
+    session_id: str = ""
+    round_id: str = ""
+    skill_preamble: str = ""
+    preamble_context: dict = Field(default_factory=dict)
     task_complexity: str = "medium"
     fast_path: bool = False
     consecutive_rejections: int = 0
@@ -71,6 +79,13 @@ class OptimizerStateModel(BaseModel):
     def validate_complexity(cls, v: str) -> str:
         if v not in ("low", "medium", "high"):
             return "medium"
+        return v
+
+    @field_validator("run_mode")
+    @classmethod
+    def validate_run_mode(cls, v: str) -> str:
+        if v not in ("legacy_mode", "skill_mode"):
+            return "legacy_mode"
         return v
 
     @field_validator(
@@ -155,6 +170,14 @@ class OptimizerState(TypedDict):
     should_stop: bool
     auto_mode: bool
     dry_run: bool
+    run_mode: str
+    skill_name: str
+    router_decision: str
+    failure_type: str
+    session_id: str
+    round_id: str
+    skill_preamble: str
+    preamble_context: dict
 
     # Task Router (Opt-1)
     task_complexity: str

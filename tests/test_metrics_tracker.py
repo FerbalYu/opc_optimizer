@@ -45,6 +45,9 @@ class TestCollectRoundMetrics:
 
         assert metrics["round"] == 1
         assert "timestamp" in metrics
+        assert metrics["skill_name"] == "legacy_pipeline"
+        assert metrics["router_decision"] == "legacy_linear"
+        assert metrics["failure_type"] == "none"
         assert metrics["value_score"] == 7
         assert metrics["build_passed"] is True
         assert metrics["test_passed"] is True
@@ -73,6 +76,16 @@ class TestCollectRoundMetrics:
         )
         metrics = collect_round_metrics(state)
         assert metrics["is_rollback"] is True
+        assert metrics["failure_type"] == "build_failed"
+
+    def test_failure_type_prefers_execution_errors(self, tmp_project):
+        state = _make_state(
+            tmp_project,
+            execution_errors=["[execute] RuntimeError: failed"],
+            build_result={"build_passed": False, "test_passed": False},
+        )
+        metrics = collect_round_metrics(state)
+        assert metrics["failure_type"] == "node_error"
 
     def test_rollback_flag_on_low_value(self, tmp_project):
         state = _make_state(

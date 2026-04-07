@@ -88,16 +88,23 @@ class TestBroadcast:
     @pytest.mark.asyncio
     async def test_broadcast_sends_to_all_clients(self):
         """_broadcast should send message to all connected clients."""
-        ws1 = AsyncMock()
-        ws2 = AsyncMock()
+        class _Client:
+            def __init__(self):
+                self.messages = []
+
+            async def send(self, msg):
+                self.messages.append(msg)
+
+        ws1 = _Client()
+        ws2 = _Client()
         original = ws_mod._clients[:]
         ws_mod._clients.clear()
         ws_mod._clients.extend([ws1, ws2])
 
         try:
             await _broadcast('{"type": "test"}')
-            ws1.send.assert_called_once_with('{"type": "test"}')
-            ws2.send.assert_called_once_with('{"type": "test"}')
+            assert ws1.messages == ['{"type": "test"}']
+            assert ws2.messages == ['{"type": "test"}']
         finally:
             ws_mod._clients.clear()
             ws_mod._clients.extend(original)
@@ -105,9 +112,16 @@ class TestBroadcast:
     @pytest.mark.asyncio
     async def test_broadcast_removes_dead_clients(self):
         """_broadcast should remove clients that raise exceptions."""
-        ws_alive = AsyncMock()
-        ws_dead = AsyncMock()
-        ws_dead.send.side_effect = ConnectionError("gone")
+        class _AliveClient:
+            async def send(self, _msg):
+                return None
+
+        class _DeadClient:
+            async def send(self, _msg):
+                raise ConnectionError("gone")
+
+        ws_alive = _AliveClient()
+        ws_dead = _DeadClient()
 
         original = ws_mod._clients[:]
         ws_mod._clients.clear()

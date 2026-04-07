@@ -487,9 +487,13 @@ def wait_for_config() -> dict:
     Returns:
         Config dict with 'path' and 'goal' keys.
     """
+    # If landing page already submitted config, return immediately.
+    if not _optimizer_ready.is_set():
+        _optimizer_ready.wait()
+    config = _optimizer_config.copy()
+    # Reset for potential next session.
     _optimizer_ready.clear()
-    _optimizer_ready.wait()
-    return _optimizer_config.copy()
+    return config
 
 
 def _fetch_news_sync(timeout_seconds: float = 30.0):

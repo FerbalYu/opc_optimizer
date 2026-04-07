@@ -20,6 +20,13 @@ class TestOptimizerStateModel:
         assert state.should_stop is False
         assert state.auto_mode is False
         assert state.dry_run is False
+        assert state.run_mode == "legacy_mode"
+        assert state.skill_name == "legacy_pipeline"
+        assert state.router_decision == "legacy_linear"
+        assert state.failure_type == "none"
+        assert state.session_id == ""
+        assert state.round_id == ""
+        assert state.skill_preamble == ""
 
     def test_dict_access(self):
         """Test dictionary-style access."""
@@ -53,6 +60,14 @@ class TestOptimizerStateModel:
 
         state = OptimizerStateModel(max_rounds=-1)
         assert state.max_rounds == 0
+
+    def test_run_mode_validation(self):
+        """Test run mode normalization to supported values."""
+        state = OptimizerStateModel(run_mode="skill_mode")
+        assert state.run_mode == "skill_mode"
+
+        state = OptimizerStateModel(run_mode="unexpected")
+        assert state.run_mode == "legacy_mode"
 
     def test_to_dict(self):
         """Test conversion to dictionary."""

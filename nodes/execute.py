@@ -530,6 +530,17 @@ def execute_node(state: OptimizerState) -> OptimizerState:
     )
     docs_context = _build_doc_context(project_path, current_plan)
 
+    preamble_block = ""
+    try:
+        from utils.skill_preamble import inject_skill_preamble
+        from utils.project_profile import load_project_profile
+
+        execute_profile = load_project_profile(project_path)
+        preamble_text = inject_skill_preamble(state, project_profile=execute_profile)
+        preamble_block = preamble_text + "\n"
+    except Exception as e:
+        logger.warning(f"Preamble injection failed in execute node: {e}")
+
     # Token budget guard (Step 25 Efficiency Upgrade)
     budget = max(12000, min(24000, llm.max_context_tokens // 2))
     files_context = LLMService.truncate_to_budget(
@@ -572,7 +583,7 @@ def execute_node(state: OptimizerState) -> OptimizerState:
 
     # v2.4.0: SEARCH/REPLACE prompt format
     prompt = f"""You are the Execution Agent for a code optimization workflow.
-{arch_preamble}Target Project: {project_path}
+{preamble_block}{arch_preamble}Target Project: {project_path}
 
 Here is the current optimization plan:
 {current_plan}

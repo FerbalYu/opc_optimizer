@@ -14,6 +14,20 @@ logger = logging.getLogger("opc.checkpoint")
 CHECKPOINT_FILENAME = "checkpoint.json"
 
 
+def _to_json_safe(value: Any) -> Any:
+    """Recursively convert arbitrary Python objects to JSON-safe values."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        safe_obj = {}
+        for k, v in value.items():
+            safe_obj[str(k)] = _to_json_safe(v)
+        return safe_obj
+    if isinstance(value, (list, tuple, set)):
+        return [_to_json_safe(v) for v in value]
+    return str(value)
+
+
 # ─── Cross-platform file lock ─────────────────────────────────────────
 
 class _FileLock:
@@ -68,13 +82,8 @@ def save_checkpoint(project_path: str, state: Dict[str, Any]) -> str:
     checkpoint_path = os.path.join(checkpoint_dir, CHECKPOINT_FILENAME)
     lock_path = checkpoint_path + ".lock"
     
-    # Only serialize JSON-safe fields
-    serializable = {}
-    for key, value in state.items():
-        if isinstance(value, (str, int, float, bool, list)):
-            serializable[key] = value
-        else:
-            serializable[key] = str(value)
+    # Recursively sanitize arbitrary state payloads (e.g. MagicMock in tests).
+    serializable = _to_json_safe(state)
     
     with _FileLock(lock_path):
         with open(checkpoint_path, 'w', encoding='utf-8') as f:

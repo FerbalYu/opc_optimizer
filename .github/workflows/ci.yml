@@ -149,6 +149,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
+      - name: Check generated skill docs freshness
+        run: |
+          python scripts/check_skill_docs_freshness.py
+
       - name: Verify main entry point
         run: |
           python -c "from main import main; print('main.py imports successfully')"

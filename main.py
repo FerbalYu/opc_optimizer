@@ -5,10 +5,16 @@ import signal
 import logging
 import socket
 import time
+import hashlib
 
-from state import OptimizerConfig
-from utils.llm import LLMService
-from utils.constants import DEFAULT_WEB_UI_HTTP_PORT, MAX_PORT_SCAN_ATTEMPTS
+if __package__:
+    from .state import OptimizerConfig
+    from .utils.llm import LLMService
+    from .utils.constants import DEFAULT_WEB_UI_HTTP_PORT, MAX_PORT_SCAN_ATTEMPTS
+else:
+    from state import OptimizerConfig
+    from utils.llm import LLMService
+    from utils.constants import DEFAULT_WEB_UI_HTTP_PORT, MAX_PORT_SCAN_ATTEMPTS
 
 
 def _setup_gitignore(project_path: str) -> None:
@@ -24,13 +30,13 @@ def _setup_gitignore(project_path: str) -> None:
 
 
 def _prepare_initial_state(
-    config: "OptimizerConfig", run_args, llm_config: dict, tui
+    config: "OptimizerConfig", run_args, llm_config: dict, tui, run_mode: str
 ) -> dict:
     """Prepare initial state for optimizer graph execution."""
     initial_state = None
     if getattr(run_args, "resume", False):
         try:
-            from utils.checkpoint import load_checkpoint
+            from .utils.checkpoint import load_checkpoint
 
             initial_state = load_checkpoint(config.project_path)
             if initial_state:
@@ -41,6 +47,13 @@ def _prepare_initial_state(
                 initial_state["dry_run"] = run_args.dry_run
                 initial_state["should_stop"] = False
                 initial_state["llm_config"] = llm_config
+                initial_state["run_mode"] = run_mode
+                initial_state.setdefault(
+                    "skill_name",
+                    "skill_pipeline" if run_mode == "skill_mode" else "legacy_pipeline",
+                )
+                initial_state.setdefault("router_decision", "legacy_resume")
+                initial_state.setdefault("failure_type", "none")
                 initial_state.setdefault("active_tasks", [])
                 initial_state.setdefault("ui_preferences", {"skip_plan_review": False})
         except Exception as e:
@@ -67,6 +80,12 @@ def _prepare_initial_state(
             "modified_files": [],
             "auto_mode": run_args.auto,
             "dry_run": run_args.dry_run,
+            "run_mode": run_mode,
+            "skill_name": (
+                "skill_pipeline" if run_mode == "skill_mode" else "legacy_pipeline"
+            ),
+            "router_decision": "legacy_linear",
+            "failure_type": "none",
             "llm_config": llm_config,
             "ui_preferences": {
                 "skip_plan_review": bool(getattr(run_args, "skip_plan_review", False)),
@@ -86,7 +105,7 @@ def _stream_graph_events(app, initial_state: dict, tui) -> dict:
             tui.print_phase(f"Completed: {k}", "✔")
             latest_state = v
             try:
-                from ui.web_server import set_optimizer_state
+                from .ui.web_server import set_optimizer_state
 
                 set_optimizer_state(v)
             except Exception as e:
@@ -249,6 +268,24 @@ def parse_args():
         action="store_true",
         help="Disable auto-formatting after code modifications",
     )
+    parser.add_argument(
+        "--skip-plan-review",
+        action="store_true",
+        help="Skip plan review step (use with --auto)",
+    )
+    parser.add_argument(
+        "--run-mode",
+        type=str,
+        choices=["legacy_mode", "skill_mode"],
+        default=None,
+        help="Execution mode marker for observability (defaults to OPC_RUN_MODE or legacy_mode)",
+    )
+    parser.add_argument(
+        "--skill-gray-percent",
+        type=int,
+        default=None,
+        help="Skill mode rollout percentage (0-100, defaults to OPC_SKILL_GRAY_PERCENT)",
+    )
 
     args = parser.parse_args()
 
@@ -261,9 +298,54 @@ def parse_args():
     return args
 
 
+def _resolve_run_mode(run_args) -> str:
+    """Resolve execution mode with explicit override and gray rollout fallback."""
+    mode = getattr(run_args, "run_mode", None) or os.getenv("OPC_RUN_MODE", "")
+    if not mode:
+        gray_percent = getattr(run_args, "skill_gray_percent", None)
+        if gray_percent is None:
+            raw_percent = os.getenv("OPC_SKILL_GRAY_PERCENT", "").strip()
+            if raw_percent:
+                try:
+                    gray_percent = int(raw_percent)
+                except ValueError:
+                    logging.warning(
+                        "Invalid OPC_SKILL_GRAY_PERCENT '%s', fallback to 0",
+                        raw_percent,
+                    )
+                    gray_percent = 0
+            else:
+                gray_percent = 0
+
+        if gray_percent < 0:
+            gray_percent = 0
+        if gray_percent > 100:
+            gray_percent = 100
+
+        if gray_percent <= 0:
+            return "legacy_mode"
+        if gray_percent >= 100:
+            return "skill_mode"
+
+        project = getattr(run_args, "project_path", "") or ""
+        goal = getattr(run_args, "goal", "") or ""
+        seed = f"{project}|{goal}"
+        bucket = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) % 100
+        return "skill_mode" if bucket < gray_percent else "legacy_mode"
+
+    mode = mode.strip()
+    if mode not in ("legacy_mode", "skill_mode"):
+        logging.warning(
+            "Invalid run mode '%s', fallback to 'legacy_mode' (allowed: legacy_mode/skill_mode)",
+            mode,
+        )
+        return "legacy_mode"
+    return mode
+
+
 def main():
     _configure_stdio()
-    from ui.tui import OPCConsole
+    from .ui.tui import OPCConsole
 
     tui = OPCConsole()
     tui.print_header()
@@ -280,7 +362,7 @@ def main():
         args = parse_args()
 
         # Initialize OpenTelemetry tracing (no-op if not installed)
-        from utils.telemetry import init_tracing
+        from .utils.telemetry import init_tracing
 
         init_tracing()
 
@@ -310,6 +392,7 @@ def main():
                 max_rounds=run_args.max_rounds,
                 archive_every_n_rounds=run_args.archive_every,
             )
+            run_mode = _resolve_run_mode(run_args)
 
             _setup_gitignore(config.project_path)
 
@@ -317,6 +400,7 @@ def main():
             print(f"🎯 Goal           : {config.optimization_goal}")
             print(f"🔄 Max Rounds     : {config.max_rounds}")
             print(f"📦 Archive Every  : {config.archive_every_n_rounds} rounds")
+            print(f"🧭 Run Mode       : {run_mode}")
             if run_args.dry_run:
                 print("🏜️  Dry Run        : YES (no file modifications)")
             if run_args.auto:
@@ -327,133 +411,131 @@ def main():
                 ("Execute", "execute_model"),
                 ("Test", "test_model"),
             ]:
-                model_val = llm_config.get(key)
-                if model_val:
-                    print(f"🧠 {label} Model   : {model_val}")
+                val = llm_config.get(key)
+                if val:
+                    print(f"🔧 {label} Model    : {val}")
 
-            from utils.config_loader import load_config
+            if run_args.timeout != 120:
+                print(f"⏱️  LLM Timeout    : {run_args.timeout}s")
 
-            load_config(
-                cli_args={
-                    "goal": config.optimization_goal,
-                    "max_rounds": config.max_rounds,
-                    "dry_run": run_args.dry_run,
-                    "auto": run_args.auto,
-                },
-                project_path=config.project_path,
-            )
+            # Print formatter info
+            formatter = os.environ.get("OPC_FORMATTER", "auto-detect")
+            print(f"🎨 Formatter      : {formatter}")
+            if getattr(run_args, "no_format", False):
+                print("   (auto-formatting disabled)")
 
-            from graph import create_optimizer_graph
+            # ── Build or load graph ──
+            if web_already_started:
+                print("\n⏳ Waiting for graph result via Web UI...")
+                from .ui.web_server import wait_for_result
 
-            app = create_optimizer_graph(project_path=config.project_path)
+                result = wait_for_result()
+                tui.print_success("Graph execution completed via Web UI!")
+            else:
+                from .graph import create_optimizer_graph
 
-            if run_args.web_ui and not web_already_started:
-                try:
-                    from ui.web_server import start_server, _resolve_web_ui_ports
-
-                    web_ui_http_port, web_ui_ws_port = _resolve_web_ui_ports(
-                        run_args.http_port
-                    )
-                    start_server(
-                        http_port=web_ui_http_port,
-                        ws_port=web_ui_ws_port,
-                        open_browser=True,
-                    )
-                    print(f"🌐 Web UI started: http://localhost:{web_ui_http_port}")
-                except Exception as e:
-                    print(f"⚠️  Web UI failed to start: {e}")
-
-            initial_state = _prepare_initial_state(config, run_args, llm_config, tui)
-
-            try:
-                from ui.web_server import set_optimizer_state
-
-                set_optimizer_state(initial_state)
-            except Exception:
-                pass
-
-            print("\n🚀 Starting OPC Optimization Loop...")
-            latest_state = _stream_graph_events(app, initial_state, tui)
-
-            tui.print_final_report(
-                total_rounds=latest_state.get("current_round", 1),
-                reports=latest_state.get("round_reports", []),
-            )
-            LLMService.print_usage_summary()
-
-        # ── Standalone Web UI mode ──
-        if args.web_ui and not args.project_path:
-            print("⛏️  OPC Optimizer — Web UI Mode")
-            print("🌐 Starting Web UI server...")
-            try:
-                from ui.web_server import start_server, wait_for_config, _StaticHandler
-
-                # Need to resolve ports manually before starting server in case defaults are used
-                web_ui_http_port, web_ui_ws_port = _resolve_web_ui_ports(args.http_port)
-                start_server(
-                    http_port=web_ui_http_port,
-                    ws_port=web_ui_ws_port,
-                    open_browser=True,
-                    landing=True,
-                    fetch_news=True,
+                app = create_optimizer_graph(config.project_path)
+                initial_state = _prepare_initial_state(
+                    config, run_args, llm_config, tui, run_mode
                 )
-                print(f"🌐 Web UI: http://localhost:{web_ui_http_port}")
+                tui.print_phase("Starting optimization workflow", "🚀")
+                result = _stream_graph_events(app, initial_state, tui)
+                tui.print_success("Optimization workflow completed!")
 
+            # ── Summary ──
+            rounds = result.get("current_round", 0)
+            errors = result.get("execution_errors", [])
+            modified = result.get("modified_files", [])
+            stops = result.get("should_stop", False)
+            stop_reason = result.get("stop_reason", "")
+
+            tui.print_section("Optimization Summary")
+            print(f"   Rounds completed : {rounds}/{result.get('max_rounds', '?')}")
+            print(f"   Files modified    : {len(modified)}")
+            if errors:
+                print(f"   Errors            : {len(errors)}")
+                for err in errors[:5]:
+                    print(f"      - {err[:80]}")
+                if len(errors) > 5:
+                    print(f"      ... and {len(errors)-5} more")
+            else:
+                print(f"   Errors            : 0")
+
+            if stops:
+                print(f"\n   Stop reason       : {stop_reason or 'User requested stop'}")
+
+            # Print reports
+            reports = result.get("round_reports", [])
+            if reports:
+                print(f"\n📋 Optimization Reports ({len(reports)}):")
+                for i, r in enumerate(reports[:3], 1):
+                    title = r.get("title", "Untitled") if isinstance(r, dict) else str(r)[:60]
+                    print(f"   {i}. {title}")
+                if len(reports) > 3:
+                    print(f"   ... and {len(reports)-3} more")
+
+            return result
+
+        # ── Main execution dispatch ──
+        if args.web_ui:
+            http_port, ws_port = _resolve_web_ui_ports(args.http_port)
+            print(f"🌐 Starting Web UI on http://127.0.0.1:{http_port}")
+            print(f"   WebSocket: ws://127.0.0.1:{ws_port}")
+            print()
+            # Start web server in background thread
+            from .ui.web_server import start_server
+            import threading
+
+            server_thread = threading.Thread(
+                target=start_server,
+                args=(http_port, ws_port),
+                daemon=True,
+            )
+            server_thread.start()
+            # Wait for server to be ready
+            import urllib.request
+
+            for _ in range(30):
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:{http_port}/health", timeout=1)
+                    break
+                except Exception:
+                    time.sleep(0.5)
+            else:
+                tui.print_error("Web UI server failed to start")
+                sys.exit(1)
+
+            # Open browser
+            import webbrowser
+
+            webbrowser.open(f"http://127.0.0.1:{http_port}")
+
+            if args.project_path:
+                # Run graph with live UI updates
+                result = _execute_session(args, web_already_started=False)
+                _keep_webui_alive(True)
+            else:
+                # Standalone mode - just serve UI
+                tui.print_success("Web UI ready! Configure project in browser.")
+                tui.print_info("Press Ctrl+C to exit")
                 while True:
-                    print(
-                        "\n⏳ Waiting for configuration from browser (Landing Page)..."
-                    )
-                    web_config = wait_for_config()
-
-                    import copy
-
-                    run_args = copy.copy(args)
-                    run_args.project_path = web_config.get("path", "")
-                    run_args.goal = web_config.get("goal", args.goal)
-                    run_args.max_rounds = web_config.get("max_rounds", args.max_rounds)
-                    run_args.auto = False  # Web UI mode uses interactive review
-                    run_args.skip_plan_review = bool(
-                        web_config.get("skip_plan_review", False)
-                    )
-                    if web_config.get("model"):
-                        run_args.model = web_config["model"]
-
-                    if not run_args.project_path or not os.path.exists(
-                        run_args.project_path
-                    ):
-                        print(f"❌ Invalid project path: {run_args.project_path}")
-                        continue
-
-                    print(f"✅ Config received: {run_args.project_path}")
-                    _StaticHandler._landing_mode = False
-
-                    # Run the optimization session
-                    _execute_session(run_args, web_already_started=True)
-
-                    print(
-                        "\n🌐 Optimization complete. Waiting for new task on landing page..."
-                    )
-                    _StaticHandler._landing_mode = True
-
-            except Exception as e:
-                print(f"❌ Web UI failed: {e}")
-                import traceback
-
-                traceback.print_exc()
-                return
+                    time.sleep(1)
         else:
-            # ── CLI Mode or Single-Shot Web UI ──
-            _execute_session(args, web_already_started=False)
+            # CLI mode
+            result = _execute_session(args)
+            if result.get("should_stop"):
+                tui.print_info("Optimization stopped by user.")
+            else:
+                tui.print_success("All optimization rounds completed!")
             _keep_webui_alive(args.web_ui)
 
     except KeyboardInterrupt:
-        tui.print_error("Interrupted by user.")
-        LLMService.print_usage_summary()
+        tui.print_error("Interrupted by user")
+        sys.exit(130)
     except Exception as e:
-        tui.print_error(f"Error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logging.exception("Fatal error in main")
+        tui.print_error(f"Fatal error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
