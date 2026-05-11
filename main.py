@@ -9,11 +9,9 @@ import hashlib
 
 if __package__:
     from .state import OptimizerConfig
-    from .utils.llm import LLMService
     from .utils.constants import DEFAULT_WEB_UI_HTTP_PORT, MAX_PORT_SCAN_ATTEMPTS
 else:
     from state import OptimizerConfig
-    from utils.llm import LLMService
     from utils.constants import DEFAULT_WEB_UI_HTTP_PORT, MAX_PORT_SCAN_ATTEMPTS
 
 
@@ -353,7 +351,15 @@ def main():
     # Graceful shutdown handler
     def signal_handler(sig, frame):
         tui.print_error("Received interrupt signal. Shutting down gracefully...")
-        LLMService.print_usage_summary()
+        try:
+            if __package__:
+                from .utils.llm import LLMService
+            else:
+                from utils.llm import LLMService
+        except Exception:
+            LLMService = None
+        if LLMService is not None:
+            LLMService.print_usage_summary()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)

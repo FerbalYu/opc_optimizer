@@ -115,6 +115,102 @@ body {
   transition: width 0.5s ease;
 }
 
+/* Runtime Overview */
+#workflow-overview {
+  position: absolute;
+  top: 120px;
+  left: 14px;
+  z-index: 8;
+  width: min(340px, calc(100vw - 420px));
+  min-width: 280px;
+  background: rgba(13, 17, 23, 0.86);
+  border: 1px solid rgba(139, 148, 158, 0.32);
+  border-radius: 8px;
+  padding: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+}
+.overview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.overview-title { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.overview-risk {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--accent-green);
+  border: 1px solid rgba(63,185,80,0.4);
+  background: rgba(63,185,80,0.12);
+}
+.overview-risk.warn {
+  color: var(--accent-orange);
+  border-color: rgba(240,136,62,0.45);
+  background: rgba(240,136,62,0.14);
+}
+.overview-risk.error {
+  color: var(--accent-red);
+  border-color: rgba(248,81,73,0.5);
+  background: rgba(248,81,73,0.14);
+}
+.node-state-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.node-state-cell {
+  min-height: 48px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: rgba(22,27,34,0.88);
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.node-state-cell .node-state-name {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.node-state-cell .node-state-status { font-size: 11px; color: var(--text-primary); }
+.node-state-cell.running { border-color: var(--accent-blue); box-shadow: 0 0 14px rgba(88,166,255,0.22); }
+.node-state-cell.done { border-color: rgba(63,185,80,0.55); }
+.node-state-cell.error { border-color: rgba(248,81,73,0.65); }
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+.overview-metric {
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 7px;
+  background: rgba(22,27,34,0.78);
+}
+.overview-metric .metric-value { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.overview-metric .metric-label { font-size: 9px; color: var(--text-secondary); margin-top: 2px; }
+#overview-recent {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.overview-event {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.overview-event strong { color: var(--text-primary); }
+
 /* Task Strip */
 #task-strip {
   position: absolute;
@@ -585,6 +681,28 @@ body {
       <button id="theme-toggle" title="切换主题">🌙</button>
     </div>
     <div id="task-strip"><div class="task-strip-empty">No active tasks yet.</div></div>
+    <div id="workflow-overview" aria-label="Workflow runtime overview">
+      <div class="overview-head">
+        <div class="overview-title">Workflow Overview</div>
+        <div id="overview-risk" class="overview-risk">Stable</div>
+      </div>
+      <div id="node-state-grid" class="node-state-grid"></div>
+      <div class="overview-metrics">
+        <div class="overview-metric">
+          <div class="metric-value" id="overview-round">-</div>
+          <div class="metric-label">Round</div>
+        </div>
+        <div class="overview-metric">
+          <div class="metric-value" id="overview-files">0</div>
+          <div class="metric-label">Changed Files</div>
+        </div>
+        <div class="overview-metric">
+          <div class="metric-value" id="overview-errors">0</div>
+          <div class="metric-label">Errors</div>
+        </div>
+      </div>
+      <div id="overview-recent"></div>
+    </div>
     <div id="connection-badge" class="disconnected">● 未连接</div>
     <!-- Round-end awaiting_input notification banner (v2.10) -->
     <div id="awaiting-banner" style="display:none;position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(13,17,23,0.95);border:1px solid var(--accent-orange);border-radius:12px;padding:12px 20px;display:flex;align-items:center;gap:14px;min-width:360px;max-width:520px;backdrop-filter:blur(8px);box-shadow:0 4px 24px rgba(0,0,0,0.5);">
@@ -1353,6 +1471,83 @@ const logsEl = document.getElementById('logs');
 let logCount = 0;
 let activeLogFilter = 'all';
 let logSearchQuery = '';
+const visualState = {
+  nodeStatus: Object.fromEntries(NODES.map(name => [name, 'pending'])),
+  errors: 0,
+  changedFiles: 0,
+  recent: [],
+};
+
+function initWorkflowOverview() {
+  const grid = document.getElementById('node-state-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (const name of NODES) {
+    const cell = document.createElement('div');
+    cell.className = 'node-state-cell pending';
+    cell.id = `node-state-${name}`;
+    cell.innerHTML = `
+      <div class="node-state-name">${NODE_LABELS[name] || name}</div>
+      <div class="node-state-status">Pending</div>
+    `;
+    grid.appendChild(cell);
+  }
+}
+
+function setNodeVisualState(nodeName, status) {
+  if (!NODES.includes(nodeName)) return;
+  visualState.nodeStatus[nodeName] = status;
+  const cell = document.getElementById(`node-state-${nodeName}`);
+  if (!cell) return;
+  cell.className = `node-state-cell ${status}`;
+  const statusText = {
+    pending: 'Pending',
+    running: 'Running',
+    done: 'Done',
+    error: 'Needs attention',
+  }[status] || status;
+  const label = cell.querySelector('.node-state-status');
+  if (label) label.textContent = statusText;
+}
+
+function resetNodeVisualState() {
+  for (const name of NODES) setNodeVisualState(name, 'pending');
+}
+
+function addOverviewEvent(label, detail = '') {
+  const stamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  visualState.recent.unshift({ stamp, label, detail });
+  visualState.recent = visualState.recent.slice(0, 4);
+  renderWorkflowOverview();
+}
+
+function renderWorkflowOverview() {
+  const roundEl = document.getElementById('overview-round');
+  const filesEl = document.getElementById('overview-files');
+  const errorsEl = document.getElementById('overview-errors');
+  const riskEl = document.getElementById('overview-risk');
+  const recentEl = document.getElementById('overview-recent');
+  if (roundEl) roundEl.textContent = currentRoundNum ? `#${currentRoundNum}` : '-';
+  if (filesEl) filesEl.textContent = String(visualState.changedFiles);
+  if (errorsEl) errorsEl.textContent = String(visualState.errors);
+  if (riskEl) {
+    riskEl.className = 'overview-risk';
+    if (visualState.errors > 0) {
+      riskEl.classList.add('error');
+      riskEl.textContent = 'Error';
+    } else if (visualState.changedFiles > 5) {
+      riskEl.classList.add('warn');
+      riskEl.textContent = 'Large diff';
+    } else {
+      riskEl.textContent = 'Stable';
+    }
+  }
+  if (recentEl) {
+    recentEl.innerHTML = visualState.recent.length
+      ? visualState.recent.map(item => `<div class="overview-event"><strong>${escHtml(item.stamp)}</strong> ${escHtml(item.label)} ${escHtml(item.detail)}</div>`).join('')
+      : '<div class="overview-event">Waiting for workflow events.</div>';
+  }
+}
 
 function addLog(text, cls = 'info') {
   const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -1850,6 +2045,9 @@ let selectedReviewTaskId = null;
 let optimizationFinished = false;
 let shutdownCountdownActive = false;
 
+initWorkflowOverview();
+renderWorkflowOverview();
+
 function connect() {
   ws = new WebSocket(WS_URL);
   
@@ -2091,6 +2289,7 @@ function handleEvent(msg) {
       
     case 'node_start':
       moveToStation(data.node);
+      setNodeVisualState(data.node, 'running');
       document.getElementById('current-node').textContent = NODE_LABELS[data.node] || data.node;
       document.getElementById('status-dot').className = 'status-dot';
       if (data.round) {
@@ -2099,6 +2298,8 @@ function handleEvent(msg) {
         document.getElementById('round-info').textContent = `Round ${data.round}`;
       }
       addLog(`▶ ${data.node} 开始执行...`, 'node-start');
+      addOverviewEvent('Started', data.node || '');
+      renderWorkflowOverview();
       const idx = NODES.indexOf(data.node);
       if (idx >= 0) {
         document.getElementById('progress-bar').style.width = `${((idx) / NODES.length) * 100}%`;
@@ -2107,6 +2308,7 @@ function handleEvent(msg) {
       
     case 'node_complete':
       celebrateAt(data.node);
+      setNodeVisualState(data.node, 'done');
       completedNodes++;
       currentRoundNodes++;
       document.getElementById('stat-nodes').textContent = completedNodes;
@@ -2118,6 +2320,8 @@ function handleEvent(msg) {
         updateTimingBars(timings);
       }
       addLog(`✔ ${data.node} 完成 (${data.elapsed || '?'}s)`, 'node-complete');
+      addOverviewEvent('Completed', `${data.node || ''} ${data.elapsed || '?'}s`);
+      renderWorkflowOverview();
       const cidx = NODES.indexOf(data.node);
       if (cidx >= 0) {
         document.getElementById('progress-bar').style.width = `${((cidx + 1) / NODES.length) * 100}%`;
@@ -2126,7 +2330,11 @@ function handleEvent(msg) {
       
     case 'node_error':
       errorAt(data.node);
+      setNodeVisualState(data.node, 'error');
+      visualState.errors++;
       document.getElementById('status-dot').className = 'status-dot error';
+      addOverviewEvent('Error', data.node || '');
+      renderWorkflowOverview();
       addLog(`✖ ${data.node} 错误: ${data.error || 'unknown'}`, 'node-error');
       break;
       
@@ -2135,12 +2343,19 @@ function handleEvent(msg) {
       currentRoundTimings = {};
       currentRoundNodes = 0;
       currentRoundDiffs = 0;
+      visualState.errors = 0;
+      visualState.changedFiles = 0;
+      resetNodeVisualState();
       document.getElementById('stat-round').textContent = `#${data.round || '?'}`;
+      addOverviewEvent('Round started', `#${data.round || '?'}`);
+      renderWorkflowOverview();
       addLog(`🔄 第 ${data.round} 轮开始`, 'node-start');
       document.getElementById('progress-bar').style.width = '0%';
       break;
       
     case 'round_end':
+      addOverviewEvent('Round completed', `#${data.round || '?'}`);
+      renderWorkflowOverview();
       addLog(`🏁 第 ${data.round} 轮完成`, 'node-complete');
       // Save round data
       addRoundData(data.round, {
@@ -2181,7 +2396,10 @@ function handleEvent(msg) {
       if (data.files && data.files.length) {
         data.files.forEach(f => allDiffs.unshift(f));
         currentRoundDiffs += data.files.length;
+        visualState.changedFiles += data.files.length;
         renderDiffs();
+        addOverviewEvent('Diff received', `${data.files.length} file(s)`);
+        renderWorkflowOverview();
         // Flash the diff tab
         const diffTab = document.querySelector('[data-tab="tab-diff"]');
         diffTab.style.color = 'var(--accent-green)';
