@@ -68,6 +68,19 @@ new_code
         assert len(mods) == 1
         assert mods[0]["filepath"] == "utils/helper.py"
 
+    def test_angle_wrapped_real_filepath(self):
+        text = "\n".join([
+            "<stats_tool.py>",
+            "<<<<<<< SEARCH",
+            "old_code",
+            "=======",
+            "new_code",
+            ">>>>>>> REPLACE",
+        ])
+        mods = parse_search_replace(text)
+        assert len(mods) == 1
+        assert mods[0]["filepath"] == "stats_tool.py"
+
 
 class TestParseJsonFallback:
     def test_valid_json(self):

@@ -46,6 +46,11 @@ def _sanitize_filepath(raw: str) -> Optional[str]:
     
     if not path:
         return None
+
+    if path.startswith('<') and path.endswith('>') and path.count('<') == 1 and path.count('>') == 1:
+        inner = path[1:-1].strip()
+        if inner and re.search(r'[/\\.]', inner) and not inner.startswith('/'):
+            path = inner
     
     # Reject HTML/XML tags (e.g. <filepath>, </think>, <minimax:tool_call>)
     if re.match(r'^<.*>$', path) or path.startswith('</'):

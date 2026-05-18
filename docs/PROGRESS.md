@@ -1,21 +1,54 @@
 # Progress
 
-Updated: 2026-05-11T13:50:00+08:00
+Updated: 2026-05-18T23:50:00+08:00
 
 ## Current Plan
-- [x] Add package-mode compatibility and regression tests.
-- [x] Add Web UI visualization enhancements and tests.
-- [x] Run focused verification and update final status.
+- [x] Record the OPC 5-round trial findings in `docs/OPC_EVAL_FIX_PLAN.md`.
+- [x] Fix and test graph topology and TUI summary API regressions.
+- [x] Tighten environment-error detection.
+- [x] Add explicit validation-mode state and reporting semantics.
+- [x] Protect test files when the goal says tests must remain unchanged.
+- [x] Fix live 5-round regressions found after validation/write-scope fixes.
+- [x] Run focused, broad, and real 5-round verification.
 
 ## Completed
-- [x] Explored repository structure and confirmed package-mode import failure.
-- [x] Created autonomous workflow harness files.
-- [x] Added package initializer compatibility aliases for legacy absolute imports.
-- [x] Added package entrypoint tests for `import opc_optimizer.graph` and `python -m opc_optimizer --help`.
-- [x] Deferred `LLMService` import in `main.py` so help output does not initialize LiteLLM.
-- [x] Added Web UI runtime overview for node state, changed files, errors, risk, and recent events.
-- [x] Added static Web UI regression tests.
-- [x] Performed browser smoke check against `ui/web/index.html`.
+- [x] Ran an isolated sample project trial in
+  `D:\workflow\opc\src\opc_optimizer_eval_20260518-214221`.
+- [x] Confirmed the original sample baseline failed 6/6 tests.
+- [x] Found that the compiled graph previously stopped at `plan -> END`.
+- [x] Added the missing `plan -> execute` edge and looped `interact` back to
+  `plan`.
+- [x] Added TUI methods required by `main.py` summary output.
+- [x] Added graph topology and TUI API regression tests.
+- [x] Re-ran a live 5-round trial and confirmed the workflow now reaches 5/5
+  rounds.
+- [x] Confirmed live 5-round quality is still not trustworthy: real pytest
+  status was downgraded to static fallback, and tests were modified despite the
+  goal saying tests should remain unchanged.
+- [x] Updated `DESIGN.md` for the validation reliability delivery pass.
+- [x] Replaced broad environment-error matching with specific tooling-error
+  patterns and tests.
+- [x] Added structured validation metadata:
+  `validation_mode`, `real_tests_ran`, and `static_fallback_reason`.
+- [x] Updated round evaluation, reports, and metrics so static fallback is not
+  treated as real test success.
+- [x] Added read-only test-file filtering in execute scope resolution.
+- [x] Added low-value/no-op auto-commit skipping in `report_node`.
+- [x] Fixed package compatibility aliases so `plugins` resolves to the real
+  package module, not an empty shell.
+- [x] Fixed self-repair parsing to use `parse_llm_output()` and the parser's
+  `filepath` / `old_content_snippet` / `new_content` shape.
+- [x] Normalized simple LLM path wrappers such as `<stats_tool.py>` while still
+  rejecting XML/tool placeholder paths.
+- [x] Stripped invisible LLM formatting characters such as BOM before applying
+  Python patches.
+- [x] Normalized `pytest` commands to run through the current interpreter with
+  `python -m pytest`.
+- [x] Treated legacy "No build command configured" output as skipped success
+  instead of a failed build.
+- [x] Preserved partial implementation changes when real pytest fails, so later
+  rounds can build on useful progress; rollback remains for technical build
+  failures.
 
 ## In Progress
 - None.
@@ -24,22 +57,49 @@ Updated: 2026-05-11T13:50:00+08:00
 - None.
 
 ## Verification
-- `python -c "import opc_optimizer; import opc_optimizer.graph; print('package import ok')"` from `D:\workflow\opc\src`: failed before changes with `ModuleNotFoundError: No module named 'state'`.
-- `python -m pytest --collect-only -q`: collected 536 tests before changes.
-- `python -m pytest tests/test_package_entrypoint.py tests/test_ui_visual_state.py tests/test_web_server.py -q`: 24 passed.
-- `python -m opc_optimizer --help` from `D:\workflow\opc\src`: passed.
-- `python -c "import opc_optimizer; import opc_optimizer.graph; print('package import ok')"` from `D:\workflow\opc\src`: passed.
-- Playwright static page smoke at `http://127.0.0.1:9875/index.html`: overview visible, 6 node cells rendered, screenshot contained 10,926 unique colors in scene region.
+- `python -m pytest tests/test_graph.py tests/test_tui.py tests/test_package_entrypoint.py -q`: 14 passed.
+- `python -m pytest tests/test_static_validator.py tests/test_build_verification.py tests/test_execute.py tests/test_step21_22.py tests/test_metrics_tracker.py tests/test_step6_features.py tests/test_graph.py tests/test_tui.py tests/test_package_entrypoint.py -q`: 99 passed.
+- `python -m pytest -q`: 549 passed.
+- Live trial after graph/TUI fixes: completed 5/5 rounds, but true original
+  acceptance was only 4/6 and test files were modified.
+- Live trial after validation/write-scope fixes in
+  `D:\workflow\opc\src\opc_optimizer_eval_regression_20260518-221821`:
+  completed 5/5 rounds with real LLM calls loaded from `.env`; `python -m
+  pytest -q` ended at 7/8 passed, `tests/test_stats_tool.py` had no diff, and
+  no `static fallback` / env-error downgrade appeared in the run log.
+- `python -m pytest tests/test_build_verification.py tests/test_nodes_integration.py tests/test_self_repair.py tests/test_step8_diff_parser.py tests/test_execute.py -q`: 98 passed.
+- `python -m pytest -q`: 556 passed, 1 warning from an existing async mock
+  resource warning.
+- Final live 5-round trial in
+  `D:\workflow\opc\src\opc_optimizer_eval_regression_20260518-233634`:
+  baseline `python -m pytest -q` was 5/8 passed; OPC completed 5/5 rounds;
+  final original pytest was 8/8 passed; `tests/test_stats_tool.py` had no diff.
+  Final report:
+  `C:\Users\ecgoi\.opc\.opc_workspace\2a811eb2\reports\final_report.md`.
 
 ## Review Notes
-- Current tests frequently mutate `sys.path`, which masks package-mode import failures.
-- The Web UI is a large single HTML file; keep enhancements localized and testable.
-- Static-page browser smoke reports WebSocket connection errors because no backend WebSocket server is running; this is expected for static-only validation.
-- Compatibility aliases reduce immediate risk but should not be treated as a replacement for gradual relative-import cleanup.
+- `utils.static_validator.is_env_error()` is now intentionally narrower; missing
+  tool cases remain covered by tests.
+- `nodes.test.test_node()` now records explicit validation mode and does not
+  mark static fallback as real test pass.
+- `nodes.execute.execute_node()` now treats tests as read-only for
+  implementation-fix goals unless test changes are explicitly requested.
+- The live trial generated target-project artifacts and commits in the isolated
+  sample project only; the OPC repo itself has not been committed.
+- The final live trial reached the target acceptance criteria, but the sample
+  target's own auto-commits included `.opclog`, `.bak`, and `__pycache__`
+  artifacts; cleanup of target-project commit scope remains a follow-up.
+- The CLI still prints "Stop reason: User requested stop" when max rounds are
+  reached; final reports correctly say "Reached max rounds".
 
 ## Suggestions
-- Gradually migrate internal imports to package-relative imports.
-- Add `pyproject.toml` when packaging expectations are finalized.
+- Add deterministic mocked e2e coverage around the specific 5-round sample
+  scenario.
+- Restrict target-project auto-commits to meaningful source changes, excluding
+  `.opclog`, `__pycache__`, and `.bak` artifacts.
+- Align CLI stop-reason summary with final report wording when max rounds are
+  reached.
 
 ## Decisions Since DESIGN.md
-- Use a compatibility package initializer first, then add focused package entrypoint tests.
+- Use a limited refactor: helper functions and structured fields first; no
+  LangGraph rewrite.

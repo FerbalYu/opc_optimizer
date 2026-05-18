@@ -51,6 +51,8 @@ class TestCollectRoundMetrics:
         assert metrics["value_score"] == 7
         assert metrics["build_passed"] is True
         assert metrics["test_passed"] is True
+        assert metrics["validation_mode"] == "real"
+        assert metrics["real_tests_ran"] is True
         assert metrics["files_changed_count"] == 0
         assert metrics["lines_added"] == 0
         assert metrics["lines_removed"] == 0
@@ -100,6 +102,24 @@ class TestCollectRoundMetrics:
         metrics = collect_round_metrics(state)
         assert metrics["total_node_time_seconds"] > 0
         assert "plan" in metrics["node_timings"]
+
+    def test_static_fallback_metrics_are_explicit(self, tmp_project):
+        state = _make_state(
+            tmp_project,
+            build_result={
+                "build_passed": True,
+                "test_passed": False,
+                "validation_mode": "static_fallback",
+                "real_tests_ran": False,
+            },
+        )
+
+        metrics = collect_round_metrics(state)
+
+        assert metrics["build_passed"] is True
+        assert metrics["test_passed"] is False
+        assert metrics["validation_mode"] == "static_fallback"
+        assert metrics["real_tests_ran"] is False
 
 
 class TestAppendAndLoadMetrics:

@@ -4,6 +4,7 @@ import subprocess
 import logging
 import time
 import difflib
+import sys
 from typing import List, Optional
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -164,6 +165,8 @@ def _build_result_from_output(output: str) -> dict:
     """Normalize legacy build output text into the structured build result shape."""
     text = output or ""
     lowered = text.lower()
+    if "no build command configured" in lowered or "empty build command" in lowered:
+        return {"passed": True, "output": text, "skipped": True}
     passed = ("exit_code=0" in text) or ("all tests passed" in lowered) or ("all passed" in lowered)
     if "exit_code=1" in text or "syntaxerror" in lowered or "failed" in lowered:
         passed = False
@@ -189,8 +192,12 @@ def _run_test_check(project_path: str, profile: dict, timeout: int = 120) -> dic
     if not cmd:
         return {"passed": True, "output": "Empty test command — skipped.", "skipped": True}
 
+    if cmd[0] == "pytest":
+        cmd = [sys.executable, "-m", "pytest", *cmd[1:]]
+
     # Special handling for pytest: add useful flags
-    if cmd[0] in ("pytest", "python") and "pytest" in test_cmd:
+    if (os.path.basename(cmd[0]).lower() in ("pytest", "pytest.exe", "python", "python.exe")
+            or (len(cmd) >= 3 and cmd[1:3] == ["-m", "pytest"])) and "pytest" in test_cmd:
         if "--tb=short" not in cmd:
             cmd.append("--tb=short")
         if "-q" not in cmd:
@@ -349,7 +356,69 @@ def _extract_expected_diff_paths(round_contract: dict) -> dict:
     return {"editable": editable, "readonly": readonly}
 
 
-def _evaluate_round_outcome(state: OptimizerState, build_passed: bool) -> dict:
+def _goal_protects_tests(goal: str) -> bool:
+    normalized = (goal or "").lower()
+    protect_markers = (
+        "tests unchanged",
+        "do not modify tests",
+        "keep tests unchanged",
+        "测试文件不变",
+        "测试不变",
+        "保持测试",
+        "保持现有测试",
+        "测试文件不改",
+    )
+    if any(marker in normalized for marker in protect_markers):
+        return True
+
+    explicit_test_change = any(
+        phrase in normalized
+        for phrase in (
+            "add test",
+            "add tests",
+            "update test",
+            "update tests",
+            "modify test",
+            "modify tests",
+            "补测试",
+            "加测试",
+            "添加测试",
+            "修改测试",
+            "更新测试",
+            "改测试",
+        )
+    )
+    if explicit_test_change:
+        return False
+    return (
+        ("fix" in normalized and "test" in normalized)
+        or ("修复" in normalized and "测试" in normalized)
+    )
+
+
+def _is_test_path(path: str) -> bool:
+    normalized = os.path.normpath(str(path).replace("\\", "/").lstrip("./")).replace("\\", "/")
+    name = os.path.basename(normalized).lower()
+    return (
+        normalized.startswith("tests/")
+        or normalized.startswith("test/")
+        or "/tests/" in normalized
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name.endswith(".spec.js")
+        or name.endswith(".test.js")
+        or name.endswith(".spec.ts")
+        or name.endswith(".test.ts")
+    )
+
+
+def _evaluate_round_outcome(
+    state: OptimizerState,
+    build_passed: bool,
+    *,
+    validation_mode: str = "real",
+    real_tests_ran: bool = True,
+) -> dict:
     """Assess whether the round delivered aligned, meaningful value."""
     round_contract = state.get("round_contract", {}) or {}
     modified_files = [str(path).replace("\\", "/") for path in (state.get("modified_files", []) or [])]
@@ -359,6 +428,9 @@ def _evaluate_round_outcome(state: OptimizerState, build_passed: bool) -> dict:
     target_files = [str(path).replace("\\", "/") for path in (round_contract.get("target_files", []) or [])]
     path_info = _extract_expected_diff_paths(round_contract)
     readonly_paths = path_info["readonly"]
+    if _goal_protects_tests(state.get("optimization_goal", "")):
+        readonly_paths = set(readonly_paths)
+        readonly_paths.update(path for path in modified_files if _is_test_path(path))
     editable_expected_paths = path_info["editable"]
     reasons = []
 
@@ -370,8 +442,15 @@ def _evaluate_round_outcome(state: OptimizerState, build_passed: bool) -> dict:
     if not effective_changes:
         reasons.append("No effective code changes were applied.")
 
+    real_verification_required = bool(acceptance_checks) or bool(modified_files)
+    verification_counts_for_completion = (
+        build_passed and (real_tests_ran or not real_verification_required)
+    )
+
     if not build_passed:
         reasons.append("Build/test/UI verification did not pass.")
+    elif validation_mode == "static_fallback" and real_verification_required:
+        reasons.append("Real build/test verification did not run; static fallback is not enough to complete acceptance checks.")
 
     readonly_violations = [path for path in modified_files if path in readonly_paths]
     if readonly_violations:
@@ -399,7 +478,7 @@ def _evaluate_round_outcome(state: OptimizerState, build_passed: bool) -> dict:
     verification = int(round_contract.get("verification_score", 3) or 3)
     confidence = int(round_contract.get("confidence_score", 5) or 5)
     value_score = 0
-    if build_passed:
+    if verification_counts_for_completion:
         value_score += 2
     if matched_expected_paths:
         value_score += 4
@@ -420,7 +499,7 @@ def _evaluate_round_outcome(state: OptimizerState, build_passed: bool) -> dict:
         reasons.append(f"Scope penalty: {files_count} files changed but low value")
 
     objective_completed = (
-        build_passed
+        verification_counts_for_completion
         and effective_changes
         and not readonly_violations
         and bool(matched_expected_paths)
@@ -450,6 +529,8 @@ def _evaluate_round_outcome(state: OptimizerState, build_passed: bool) -> dict:
         "reasons": reasons,
         "summary": summary,
         "change_magnitude": {"diff_lines": diff_lines, "files_count": files_count},
+        "validation_mode": validation_mode,
+        "real_tests_ran": real_tests_ran,
     }
 
 
@@ -484,6 +565,86 @@ def _collect_diff_evidence(project_path: str, modified_files: List[str]) -> str:
         except Exception as e:
             parts.append(f"## {filepath}\n(diff collection failed: {e})")
     return "\n\n".join(parts)
+
+
+def _normalize_repair_filepath(project_path: str, filepath: str) -> str:
+    """Normalize an LLM-provided repair path to a project-relative path."""
+    raw_path = (filepath or "").strip().strip("`").strip()
+    if raw_path.lower().startswith("file:"):
+        raw_path = raw_path.split(":", 1)[1].strip()
+    if raw_path.startswith("<") and raw_path.endswith(">") and raw_path.count("<") == 1 and raw_path.count(">") == 1:
+        raw_path = raw_path[1:-1].strip()
+    if not raw_path:
+        return ""
+
+    normalized = os.path.normpath(raw_path)
+    project_abs = os.path.abspath(project_path)
+
+    if os.path.isabs(normalized):
+        abs_path = os.path.abspath(normalized)
+        try:
+            if os.path.commonpath([project_abs, abs_path]) != project_abs:
+                return ""
+        except ValueError:
+            return ""
+        normalized = os.path.relpath(abs_path, project_abs)
+
+    if normalized.startswith("..") or os.path.isabs(normalized):
+        return ""
+
+    return normalized.replace("\\", "/")
+
+
+def _apply_self_repair_patches(
+    project_path: str,
+    patches: List[dict],
+    modified_files: List[str],
+) -> int:
+    """Apply exact SEARCH/REPLACE self-repair patches to already modified files."""
+    from utils.file_ops import read_file
+
+    allowed_paths = {
+        os.path.normcase(_normalize_repair_filepath(project_path, path))
+        for path in (modified_files or [])
+    }
+    allowed_paths.discard("")
+    applied_count = 0
+
+    for patch in patches:
+        file_path = _normalize_repair_filepath(
+            project_path,
+            patch.get("filepath") or patch.get("file") or patch.get("path") or "",
+        )
+        if not file_path:
+            continue
+        if os.path.normcase(file_path) not in allowed_paths:
+            logger.warning(f"  Skipping self-repair patch outside modified files: {file_path}")
+            continue
+
+        abs_repair_path = os.path.abspath(os.path.join(project_path, file_path))
+        project_abs = os.path.abspath(project_path)
+        try:
+            if os.path.commonpath([project_abs, abs_repair_path]) != project_abs:
+                logger.warning(f"  Skipping self-repair patch outside project: {file_path}")
+                continue
+        except ValueError:
+            continue
+        if not os.path.exists(abs_repair_path):
+            continue
+
+        content = read_file(abs_repair_path)
+        if not content:
+            continue
+
+        search_text = patch.get("old_content_snippet") or patch.get("search") or ""
+        replace_text = patch.get("new_content") if "new_content" in patch else patch.get("replace", "")
+        if search_text and search_text in content:
+            new_content = content.replace(search_text, replace_text, 1)
+            write_to_file(abs_repair_path, new_content)
+            applied_count += 1
+            logger.info(f"  Applied repair patch to {file_path}")
+
+    return applied_count
 
 
 def _run_ui_check(project_path: str, profile: dict, timeout: int = 60, round_num: int = 1) -> dict:
@@ -564,13 +725,19 @@ def test_node(state: OptimizerState) -> OptimizerState:
         sv_result = static_validate(project_path, modified_files, profile)
         build_passed = sv_result["passed"]
         combined_output = f"[fast-path static validation] {sv_result['mode']}\n" + "\n".join(sv_result["errors"][:10])
-        round_evaluation = _evaluate_round_outcome(state, build_passed)
+        round_evaluation = _evaluate_round_outcome(
+            state,
+            build_passed,
+            validation_mode="static_fallback",
+            real_tests_ran=False,
+        )
         diff_evidence = _collect_diff_evidence(project_path, modified_files)
         state["test_results"] = combined_output
         state["round_evaluation"] = round_evaluation
         state["build_result"] = {
             "build_passed": build_passed,
-            "test_passed": build_passed,
+            "test_passed": False,
+            "static_passed": build_passed,
             "ui_passed": True,
             "ui_skipped": True,
             "output": combined_output,
@@ -578,6 +745,8 @@ def test_node(state: OptimizerState) -> OptimizerState:
             "round_evaluation": round_evaluation,
             "diff_evidence": diff_evidence,
             "validation_mode": "static_fallback",
+            "real_tests_ran": False,
+            "static_fallback_reason": "fast_path",
         }
         # Still run LLM review for suggestions
         state["suggestions"] = f"Fast-path round. Static validation: {'PASSED' if build_passed else 'FAILED'}\n{combined_output}"
@@ -626,6 +795,13 @@ Do not output markdown, explanations, or quotes. Only the raw command string."""
     # Combine results
     combined_output = build_result["output"] + "\n" + test_result["output"] + "\n" + ui_result["output"]
     build_passed = build_result["passed"] and test_result["passed"] and ui_result["passed"]
+    validation_mode = "real"
+    real_tests_ran = not (
+        build_result.get("skipped", False)
+        and test_result.get("skipped", False)
+        and ui_result.get("skipped", False)
+    )
+    static_fallback_reason = ""
 
     # Backward-compatible counter update (some flows/tests still rely on this).
     if build_passed:
@@ -641,15 +817,18 @@ Do not output markdown, explanations, or quotes. Only the raw command string."""
         logger.warning("Env error detected in build output — downgrading to static validation.")
         _modified_sv = state.get("modified_files", []) or []
         sv_result = _static_validate(project_path, _modified_sv, profile)
+        static_fallback_reason = "environment_error"
         build_result = {
             "passed": sv_result["passed"],
             "output": f"[static fallback — env error] {sv_result['mode']}\n" + "\n".join(sv_result["errors"][:10]),
             "skipped": False,
         }
-        test_result = {"passed": sv_result["passed"], "output": "skipped (env error fallback)", "skipped": True}
+        test_result = {"passed": False, "output": "skipped (env error fallback)", "skipped": True}
         ui_result = {"passed": True, "output": "skipped (env error fallback)", "skipped": True}
         combined_output = build_result["output"]
         build_passed = sv_result["passed"]
+        validation_mode = "static_fallback"
+        real_tests_ran = False
         if "build_result" not in state:
             state["build_result"] = {}
         state["build_result"]["validation_mode"] = "static_fallback"
@@ -675,7 +854,7 @@ Analyze the error and generate a SEARCH/REPLACE fix for the specific issue.
 Only fix the build/syntax/import error — do NOT change logic or architecture.
 Return ONLY one or more SEARCH/REPLACE blocks in this format:
 
-FILE: <relative_path>
+<relative_path>
 <<<<<<< SEARCH
 exact lines to find
 =======
@@ -690,29 +869,11 @@ replacement lines
                     {"role": "user", "content": repair_prompt}
                 ])
                 # Apply repair patches using existing diff parser
-                from utils.diff_parser import parse_search_replace_blocks
-                from utils.file_ops import read_file
-                patches = parse_search_replace_blocks(repair_response)
-                applied_any = False
-                for patch in patches:
-                    file_path = patch.get("file", "")
-                    if not file_path:
-                        continue
-                    abs_repair_path = os.path.join(project_path, file_path)
-                    if not os.path.exists(abs_repair_path):
-                        continue
-                    content = read_file(abs_repair_path)
-                    if not content:
-                        continue
-                    search_text = patch.get("search", "")
-                    replace_text = patch.get("replace", "")
-                    if search_text and search_text in content:
-                        new_content = content.replace(search_text, replace_text, 1)
-                        with open(abs_repair_path, "w", encoding="utf-8") as f:
-                            f.write(new_content)
-                        applied_any = True
-                        logger.info(f"  Applied repair patch to {file_path}")
-                if not applied_any:
+                from utils.diff_parser import parse_llm_output
+
+                patches = parse_llm_output(repair_response)
+                applied_count = _apply_self_repair_patches(project_path, patches, modified_files)
+                if applied_count == 0:
                     logger.warning(f"  Self-repair attempt {attempt}: no patches applied")
                     feedback = "SYSTEM ERROR: Your previous response contained no valid SEARCH/REPLACE blocks. You MUST output executable code modifications, not just explanations."
                     continue
@@ -731,7 +892,12 @@ replacement lines
         if not build_passed:
             logger.warning("Self-repair exhausted, proceeding to rollback")
 
-    round_evaluation = _evaluate_round_outcome(state, build_passed)
+    round_evaluation = _evaluate_round_outcome(
+        state,
+        build_passed,
+        validation_mode=validation_mode,
+        real_tests_ran=real_tests_ran,
+    )
     diff_evidence = _collect_diff_evidence(project_path, list(state.get("modified_files", []) or []))
     
     state["test_results"] = combined_output
@@ -739,6 +905,7 @@ replacement lines
     state["build_result"] = {
         "build_passed": build_result["passed"],
         "test_passed": test_result["passed"],
+        "static_passed": build_passed if validation_mode == "static_fallback" else None,
         "ui_passed": ui_result["passed"],
         "ui_skipped": ui_result.get("skipped", False),
         "ui_screenshot": ui_result.get("screenshot"),
@@ -747,6 +914,9 @@ replacement lines
         "profile_type": profile.get("type", "unknown"),
         "round_evaluation": round_evaluation,
         "diff_evidence": diff_evidence,
+        "validation_mode": validation_mode,
+        "real_tests_ran": real_tests_ran,
+        "static_fallback_reason": static_fallback_reason,
     }
     logger.info(
         f"Build: {'✅' if build_result['passed'] else '❌'} | "
@@ -763,7 +933,11 @@ replacement lines
         )
         # Auto-rollback only for technical failures (build error), not low-value-only rounds.
         modified_files = state.get("modified_files", []) or []
-        if not build_passed and modified_files:
+        technical_build_failure = (
+            not build_result.get("passed", False)
+            and not build_result.get("skipped", False)
+        )
+        if technical_build_failure and modified_files:
             logger.info(f"🔄 Auto-rolling back {len(modified_files)} modified files...")
             for filepath in modified_files:
                 abs_path = os.path.join(project_path, filepath)

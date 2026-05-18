@@ -107,6 +107,72 @@ class TestFilterModificationsToContract:
         assert len(rejected) == 1
         assert "utils/flying-stars.js" in rejected[0]
 
+    def test_goal_keeps_tests_read_only(self):
+        contract = {"target_files": ["stats_tool.py", "tests/test_stats_tool.py"]}
+
+        allowed = _get_execute_allowed_paths(
+            contract,
+            contract["target_files"],
+            goal="修复 stats_tool.py 的测试失败，保持测试文件不变",
+        )
+
+        assert allowed == ["stats_tool.py"]
+
+    def test_acceptance_check_test_path_does_not_make_tests_writable(self):
+        modifications = [
+            {
+                "filepath": "tests/test_stats_tool.py",
+                "old_content_snippet": "old",
+                "new_content": "new",
+                "reason": "should be rejected",
+            }
+        ]
+        contract = {
+            "target_files": ["stats_tool.py", "tests/test_stats_tool.py"],
+            "acceptance_checks": ["pytest tests/test_stats_tool.py -q"],
+        }
+        allowed = _get_execute_allowed_paths(
+            contract,
+            contract["target_files"],
+            goal="fix failing tests while keeping tests unchanged",
+        )
+
+        kept, rejected = _filter_modifications_to_contract(
+            modifications,
+            contract,
+            allowed_paths=allowed,
+        )
+
+        assert kept == []
+        assert len(rejected) == 1
+        assert "tests/test_stats_tool.py" in rejected[0]
+
+    def test_all_read_only_paths_reject_all_modifications(self):
+        modifications = [
+            {
+                "filepath": "tests/test_stats_tool.py",
+                "old_content_snippet": "old",
+                "new_content": "new",
+                "reason": "should be rejected",
+            }
+        ]
+        contract = {"target_files": ["tests/test_stats_tool.py"]}
+        allowed = _get_execute_allowed_paths(
+            contract,
+            contract["target_files"],
+            goal="fix tests failure, do not modify tests",
+        )
+
+        kept, rejected = _filter_modifications_to_contract(
+            modifications,
+            contract,
+            allowed_paths=allowed,
+        )
+
+        assert allowed == []
+        assert kept == []
+        assert "no editable files" in rejected[0]
+
 
 class TestApplyModification:
     def test_successful_modification(self, tmp_project):
@@ -123,6 +189,21 @@ class TestApplyModification:
             assert "def hello_world():" in f.read()
         # Verify backup was created
         assert (tmp_project / "main.py.bak").exists()
+
+    def test_strips_invisible_llm_formatting_chars_before_python_compile(self, tmp_project):
+        mod = {
+            "filepath": "main.py",
+            "old_content_snippet": "\ufeffdef hello():",
+            "new_content": "\ufeffdef hello_world():",
+            "reason": "strip BOM from LLM patch",
+        }
+
+        result = _apply_modification(str(tmp_project), mod)
+
+        assert result.startswith("MODIFIED")
+        content = (tmp_project / "main.py").read_text(encoding="utf-8")
+        assert "\ufeff" not in content
+        assert "def hello_world():" in content
     
     def test_dry_run_no_modification(self, tmp_project):
         mod = {

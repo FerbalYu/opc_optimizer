@@ -109,6 +109,8 @@ def collect_round_metrics(state: dict) -> dict:
         "value_score": round_evaluation.get("value_score", 0),
         "build_passed": bool(build_result.get("build_passed", True)),
         "test_passed": bool(build_result.get("test_passed", True)),
+        "validation_mode": build_result.get("validation_mode", "real"),
+        "real_tests_ran": bool(build_result.get("real_tests_ran", True)),
         "files_changed_count": len(modified_files),
         "lines_added": diff_counts["lines_added"],
         "lines_removed": diff_counts["lines_removed"],

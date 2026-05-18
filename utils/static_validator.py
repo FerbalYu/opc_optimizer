@@ -13,6 +13,7 @@ Supported modes:
 
 import logging
 import os
+import re
 import subprocess
 import sys
 from typing import Dict, List, Optional
@@ -21,28 +22,43 @@ logger = logging.getLogger("opc.static_validator")
 
 __all__ = ["static_validate", "is_env_error"]
 
-# Patterns that indicate the environment itself is broken (not the code)
-_ENV_ERROR_PATTERNS = [
-    "command not found",
-    "is not recognized as an internal",   # Windows cmd
-    "No such file or directory",
-    "ENOENT",
-    "Cannot find module",
-    "cannot find",
-    "not installed",
-    "ModuleNotFoundError",
-    "ImportError",
-    "npm ERR! missing script",
-    "npm warn",
-    "Error: Cannot find",
-]
-
-
 def is_env_error(output: str) -> bool:
     """Return True if `output` looks like an environment/tooling error
     rather than a code error."""
+    if not output:
+        return False
+
     lowered = output.lower()
-    return any(pat.lower() in lowered for pat in _ENV_ERROR_PATTERNS)
+
+    # If the test runner actually reached tests and reported assertion/runtime
+    # failures, preserve the real failure instead of downgrading to static
+    # validation. These markers are intentionally broad but failure-specific.
+    real_failure_markers = (
+        "assertionerror",
+        "zerodivisionerror",
+        "indexerror",
+        "valueerror",
+        "failed tests",
+        "failed in",
+        "short test summary info",
+        "traceback (most recent call last)",
+    )
+    if any(marker in lowered for marker in real_failure_markers):
+        return False
+
+    env_patterns = (
+        r"command not found",
+        r"is not recognized as an internal",
+        r"\[.*?\]\s*command not found:",
+        r"no such file or directory: .*?(python|pytest|npm|node|go|cargo|mvn|gradle)",
+        r"enoent",
+        r"no module named ['\"]?pytest['\"]?",
+        r"no module named ['\"]?playwright['\"]?",
+        r"npm err! missing script",
+        r"error: cannot find module ['\"]?(vite|webpack|typescript|eslint|jest|vitest|react-scripts)['\"]?",
+        r"not installed",
+    )
+    return any(re.search(pattern, lowered) for pattern in env_patterns)
 
 
 # ── Python Validation ───────────────────────────────────────────────────────

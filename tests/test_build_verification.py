@@ -24,6 +24,7 @@ if "litellm" not in sys.modules:
 
 from nodes.test import (
     _parse_cmd,
+    _build_result_from_output,
     _run_build_check,
     _run_test_check,
     _run_sandboxed,
@@ -107,6 +108,11 @@ class TestRunBuildCheck:
         assert result["skipped"] is False
         assert result["passed"] is False
 
+    def test_legacy_no_build_output_is_skipped_success(self):
+        result = _build_result_from_output("No build command configured — skipped.")
+        assert result["passed"] is True
+        assert result["skipped"] is True
+
 
 # ─── _run_test_check ────────────────────────────────────────────
 
@@ -133,13 +139,13 @@ class TestRunTestCheck:
         assert result["passed"] is True
 
     def test_pytest_gets_extra_flags(self, tmp_path):
-        """When test_cmd contains pytest, --tb=short and -q should be added."""
+        """pytest commands run through current Python and get useful flags."""
         profile = {"test_cmd": "pytest"}
         with patch("nodes.test._run_sandboxed") as mock_run:
             mock_run.return_value = "[test] exit_code=0\nall passed"
             _run_test_check(str(tmp_path), profile)
-            # Check that --tb=short and -q were added
             called_cmd = mock_run.call_args[0][0]
+            assert called_cmd[1:3] == ["-m", "pytest"]
             assert "--tb=short" in called_cmd
             assert "-q" in called_cmd
 

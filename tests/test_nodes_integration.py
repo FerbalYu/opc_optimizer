@@ -192,6 +192,37 @@ class TestTestNodeIntegration:
         assert restored == original_content
         assert result["modified_files"] == []
 
+    @patch("nodes.test.LLMService")
+    def test_real_test_failure_preserves_partial_changes(self, MockLLM, tmp_project):
+        main_py = tmp_project / "main.py"
+        changed_content = "def hello():\n    return 'partial fix'\n"
+        main_py.write_text(changed_content, encoding="utf-8")
+        (tmp_project / "main.py.bak").write_text("def hello():\n    print('hello')\n", encoding="utf-8")
+
+        mock_instance = MockLLMService(text_response="Keep iterating")
+        MockLLM.return_value = mock_instance
+
+        from nodes.test import test_node
+        state = _make_state(tmp_project, modified_files=["main.py"])
+
+        with patch(
+            "utils.project_profile.load_project_profile",
+            return_value={"type": "python", "build_cmd": None, "test_cmd": "python -m pytest -q"},
+        ), patch(
+            "nodes.test._detect_and_run_build",
+            return_value="No build command configured — skipped.",
+        ), patch(
+            "nodes.test._run_test_check",
+            return_value={"passed": False, "output": "[test] exit_code=1\n1 failed, 7 passed", "skipped": False},
+        ), patch(
+            "nodes.test._run_ui_check",
+            return_value={"passed": True, "output": "UI verification disabled - skipped.", "skipped": True},
+        ):
+            result = test_node(state)
+
+        assert main_py.read_text(encoding="utf-8") == changed_content
+        assert result["modified_files"] == ["main.py"]
+
 
 class TestLLMServiceTokenBudget:
     def test_truncate_to_budget_short_text(self):

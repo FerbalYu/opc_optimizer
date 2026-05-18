@@ -15,7 +15,11 @@ def report_node(state: OptimizerState) -> OptimizerState:
     current_round = state.get("current_round", 1)
     project_path = state["project_path"]
     round_evaluation = state.get("round_evaluation", {}) or {}
-    diff_evidence = ((state.get("build_result", {}) or {}).get("diff_evidence")) or "No file-level diff evidence available."
+    build_result_state = state.get("build_result", {}) or {}
+    diff_evidence = build_result_state.get("diff_evidence") or "No file-level diff evidence available."
+    validation_mode = build_result_state.get("validation_mode", "real")
+    real_tests_ran = build_result_state.get("real_tests_ran", True)
+    static_fallback_reason = build_result_state.get("static_fallback_reason", "")
 
     # ── Collect & persist metrics (autoresearch-inspired) ─────────
     round_metrics = {}
@@ -46,6 +50,11 @@ def report_node(state: OptimizerState) -> OptimizerState:
 ```text
 {state.get("test_results")}
 ```
+
+## Verification Status
+- Validation mode: {validation_mode}
+- Real tests ran: {real_tests_ran}
+- Static fallback reason: {static_fallback_reason or "N/A"}
 
 ## Diff Evidence
 {diff_evidence}
@@ -124,7 +133,16 @@ def report_node(state: OptimizerState) -> OptimizerState:
     state["round_reports"] = reports
 
     diff_summary = state.get("code_diff", "")
-    git_auto_commit(project_path, current_round, summary=diff_summary)
+    should_commit = not (
+        round_evaluation.get("low_value_round")
+        or round_evaluation.get("readonly_violations")
+        or diff_summary == "No changes parsed from LLM output."
+        or diff_summary == "No file changes proposed."
+    )
+    if should_commit:
+        git_auto_commit(project_path, current_round, summary=diff_summary)
+    else:
+        logger.info("Skipping auto-commit for low-value, read-only, or no-op round")
 
     save_checkpoint(project_path, state)
 

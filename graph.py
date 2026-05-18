@@ -342,6 +342,7 @@ def create_optimizer_graph(project_path: str = None, skill_registry: Optional[ob
                 )
 
     # ── Conditional routing ──────────────────────────────────────
+    workflow.add_edge("plan", "execute")
     workflow.add_conditional_edges(
         "execute",
         should_test,
@@ -361,7 +362,7 @@ def create_optimizer_graph(project_path: str = None, skill_registry: Optional[ob
         "interact",
         should_continue,
         {
-            "continue": node_order[1],  # Loop back to execute for next round
+            "continue": node_order[0],  # Start a fresh plan for the next round
             "end": END,
         },
     )

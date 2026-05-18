@@ -103,7 +103,9 @@ def _normalize_contract_paths(round_contract: dict) -> list[str]:
 
 
 def _get_execute_allowed_paths(
-    round_contract: dict | None, discovered_targets: list[str]
+    round_contract: dict | None,
+    discovered_targets: list[str],
+    goal: str = "",
 ) -> list[str]:
     """Resolve which target files are editable this round.
 
@@ -127,8 +129,68 @@ def _get_execute_allowed_paths(
         if "no changes needed" in detail:
             readonly.add(os.path.normpath(path).replace("\\", "/"))
 
+    if _goal_protects_tests(goal):
+        readonly.update(path for path in allowed if _is_test_path(path))
+
     filtered = [path for path in allowed if path not in readonly]
-    return filtered if filtered else allowed
+    return filtered
+
+
+def _goal_protects_tests(goal: str) -> bool:
+    """Return True when test files should be treated as read-only."""
+    normalized = (goal or "").lower()
+    protect_markers = (
+        "tests unchanged",
+        "do not modify tests",
+        "keep tests unchanged",
+        "测试文件不变",
+        "测试不变",
+        "保持测试",
+        "保持现有测试",
+        "测试文件不改",
+    )
+    if any(marker in normalized for marker in protect_markers):
+        return True
+
+    explicit_test_change = any(
+        phrase in normalized
+        for phrase in (
+            "add test",
+            "add tests",
+            "update test",
+            "update tests",
+            "modify test",
+            "modify tests",
+            "补测试",
+            "加测试",
+            "添加测试",
+            "修改测试",
+            "更新测试",
+            "改测试",
+        )
+    )
+    if explicit_test_change:
+        return False
+
+    # Common workflow: "fix failing tests" normally means implementation fixes,
+    # not rewriting acceptance tests, unless explicitly requested above.
+    return ("fix" in normalized and "test" in normalized) or ("修复" in normalized and "测试" in normalized)
+
+
+def _is_test_path(path: str) -> bool:
+    normalized = os.path.normpath(str(path).replace("\\", "/").lstrip("./")).replace("\\", "/")
+    name = os.path.basename(normalized).lower()
+    return (
+        normalized.startswith("tests/")
+        or normalized.startswith("test/")
+        or "/tests/" in normalized
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name.endswith(".spec.js")
+        or name.endswith(".test.js")
+        or name.endswith(".spec.ts")
+        or name.endswith(".test.ts")
+    )
 
 
 def _is_safe_path(filepath: str, project_path: str) -> bool:
@@ -251,7 +313,19 @@ def _filter_modifications_to_contract(
     allowed_paths: list[str] | None = None,
 ) -> tuple[list, list]:
     """Keep only modifications allowed by the round contract target files."""
-    allowed_set = set(allowed_paths or _normalize_contract_paths(round_contract or {}))
+    if allowed_paths is not None:
+        allowed_set = set(allowed_paths)
+    else:
+        allowed_set = set(_normalize_contract_paths(round_contract or {}))
+
+    if allowed_paths is not None and not allowed_set:
+        rejected = [
+            f"Filtered out-of-contract modification for {mod.get('filepath', 'unknown_file')} "
+            "(no editable files are allowed this round)"
+            for mod in modifications
+        ]
+        return [], rejected
+
     if not allowed_set:
         return modifications, []
 
@@ -322,6 +396,22 @@ def _get_formatter(project_path: str) -> dict | None:
 _reviewer = CodeReviewer()
 
 
+_LLM_PATCH_INVISIBLE_CHARS = {
+    ord("\ufeff"): None,
+    ord("\u200b"): None,
+    ord("\u200c"): None,
+    ord("\u200d"): None,
+    ord("\u2060"): None,
+}
+
+
+def _clean_llm_patch_text(text: str) -> str:
+    """Remove invisible formatting chars that can make generated code invalid."""
+    if not text:
+        return text
+    return text.translate(_LLM_PATCH_INVISIBLE_CHARS)
+
+
 def _apply_modification(
     project_path: str, mod: dict, dry_run: bool = False, auto_mode: bool = False
 ) -> str:
@@ -333,8 +423,8 @@ def _apply_modification(
     from utils.diff_parser import fuzzy_find_and_replace, generate_diff_preview
 
     filepath = mod.get("filepath", "")
-    old_snippet = mod.get("old_content_snippet", "")
-    new_content = mod.get("new_content", "")
+    old_snippet = _clean_llm_patch_text(mod.get("old_content_snippet", ""))
+    new_content = _clean_llm_patch_text(mod.get("new_content", ""))
     reason = mod.get("reason", "No reason provided")
 
     # Path traversal protection - 使用严格路径验证
@@ -524,7 +614,11 @@ def execute_node(state: OptimizerState) -> OptimizerState:
             project_path, current_plan, round_contract=round_contract
         ).keys()
     )
-    execute_allowed_paths = _get_execute_allowed_paths(round_contract, target_files)
+    execute_allowed_paths = _get_execute_allowed_paths(
+        round_contract,
+        target_files,
+        goal=state.get("optimization_goal", ""),
+    )
     files_context = _build_smart_context(
         project_path, current_plan, round_contract=round_contract
     )

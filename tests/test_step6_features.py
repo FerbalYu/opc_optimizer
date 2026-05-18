@@ -67,6 +67,20 @@ class TestRoundHistory:
         result = report_node(result)
         assert len(result["round_history"]) == 2
 
+    @patch("nodes.report.git_auto_commit")
+    @patch("utils.checkpoint.save_checkpoint")
+    def test_report_node_skips_autocommit_for_low_value_round(self, mock_cp, mock_git, tmp_project):
+        from nodes.report import report_node
+
+        state = _make_state(
+            tmp_project,
+            round_evaluation={"low_value_round": True, "value_score": 2},
+        )
+
+        report_node(state)
+
+        mock_git.assert_not_called()
+
     @patch("nodes.plan.LLMService")
     def test_plan_node_includes_history_in_prompt(self, MockLLM, tmp_project):
         """plan_node should inject round_history into the LLM prompt."""

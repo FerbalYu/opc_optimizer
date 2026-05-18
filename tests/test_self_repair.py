@@ -2,10 +2,11 @@
 
 import os
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from nodes.test import _evaluate_round_outcome
+from nodes.test import _apply_self_repair_patches, _evaluate_round_outcome, test_node as run_test_node
 
 
 def _make_state(tmp_project, **overrides):
@@ -142,3 +143,108 @@ class TestComplexityPenalty:
         assert "diff_lines" in result["change_magnitude"]
         assert "files_count" in result["change_magnitude"]
         assert result["change_magnitude"]["files_count"] == 1
+
+
+class TestSelfRepairPatches:
+    def test_applies_search_replace_patch_from_diff_parser_shape(self, tmp_project):
+        main_py = tmp_project / "main.py"
+        main_py.write_text("def hello():\n    return 'broken'\n", encoding="utf-8")
+
+        applied = _apply_self_repair_patches(
+            str(tmp_project),
+            [
+                {
+                    "filepath": "<main.py>",
+                    "old_content_snippet": "    return 'broken'",
+                    "new_content": "    return 'fixed'",
+                }
+            ],
+            ["main.py"],
+        )
+
+        assert applied == 1
+        assert "return 'fixed'" in main_py.read_text(encoding="utf-8")
+
+    def test_rejects_patch_outside_modified_files(self, tmp_project):
+        (tmp_project / "other.py").write_text("value = 'broken'\n", encoding="utf-8")
+
+        applied = _apply_self_repair_patches(
+            str(tmp_project),
+            [
+                {
+                    "filepath": "other.py",
+                    "old_content_snippet": "broken",
+                    "new_content": "fixed",
+                }
+            ],
+            ["main.py"],
+        )
+
+        assert applied == 0
+        assert "broken" in (tmp_project / "other.py").read_text(encoding="utf-8")
+
+    def test_test_node_self_repair_rechecks_after_applying_patch(self, tmp_project, monkeypatch):
+        monkeypatch.setenv("OPC_MAX_SELF_REPAIR", "1")
+        main_py = tmp_project / "main.py"
+        main_py.write_text("def hello():\n    return 'broken'\n", encoding="utf-8")
+
+        class FakeRepairLLM:
+            def generate(self, _messages):
+                return "\n".join([
+                    "FILE: main.py",
+                    "<<<<<<< SEARCH",
+                    "    return 'broken'",
+                    "=======",
+                    "    return 'fixed'",
+                    ">>>>>>> REPLACE",
+                ])
+
+        class FakeReviewLLM:
+            def generate(self, _messages):
+                return "修复已通过真实测试。"
+
+        state = _make_state(
+            tmp_project,
+            modified_files=["main.py"],
+            code_diff="MODIFIED main.py",
+            round_contract={
+                "target_files": ["main.py"],
+                "acceptance_checks": ["python -m pytest -q passes"],
+                "expected_diff": ["main.py returns fixed"],
+            },
+        )
+
+        with patch(
+            "utils.project_profile.load_project_profile",
+            return_value={
+                "type": "python",
+                "build_cmd": "python -m py_compile main.py",
+                "test_cmd": "python -m pytest -q",
+            },
+        ), patch(
+            "nodes.test._detect_and_run_build",
+            return_value="[build] exit_code=0\nok",
+        ), patch(
+            "nodes.test._run_build_check",
+            return_value={"passed": True, "output": "[build] exit_code=0\nok", "skipped": False},
+        ) as rerun_build, patch(
+            "nodes.test._run_test_check",
+            side_effect=[
+                {"passed": False, "output": "[test] exit_code=1\nAssertionError", "skipped": False},
+                {"passed": True, "output": "[test] exit_code=0\n1 passed", "skipped": False},
+            ],
+        ) as run_test, patch(
+            "nodes.test._run_ui_check",
+            return_value={"passed": True, "output": "UI verification disabled - skipped.", "skipped": True},
+        ), patch(
+            "nodes.test._get_llm",
+            side_effect=[FakeRepairLLM(), FakeReviewLLM()],
+        ):
+            result = run_test_node(state)
+
+        assert "return 'fixed'" in main_py.read_text(encoding="utf-8")
+        assert result["build_result"]["build_passed"] is True
+        assert result["build_result"]["test_passed"] is True
+        assert result["build_result"]["validation_mode"] == "real"
+        assert rerun_build.called
+        assert run_test.call_count == 2

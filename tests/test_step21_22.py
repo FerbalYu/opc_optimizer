@@ -104,6 +104,50 @@ class TestRoundEvaluation:
         assert result["replan_required"] is True
         assert "expected diff paths" in " ".join(result["reasons"])
 
+    def test_static_fallback_does_not_complete_acceptance(self, tmp_project):
+        state = _make_state(
+            tmp_project,
+            round_contract={
+                "target_files": ["main.py"],
+                "acceptance_checks": ["pytest tests/test_main.py -q"],
+                "expected_diff": ["In main.py: Fix runtime behavior"],
+            },
+            modified_files=["main.py"],
+            code_diff="MODIFIED main.py: Fix runtime behavior",
+        )
+
+        result = _evaluate_round_outcome(
+            state,
+            build_passed=True,
+            validation_mode="static_fallback",
+            real_tests_ran=False,
+        )
+
+        assert result["objective_completed"] is False
+        assert result["low_value_round"] is True
+        assert result["validation_mode"] == "static_fallback"
+        assert result["real_tests_ran"] is False
+        assert "Real build/test verification did not run" in " ".join(result["reasons"])
+
+    def test_test_file_change_is_readonly_violation_when_goal_protects_tests(self, tmp_project):
+        state = _make_state(
+            tmp_project,
+            optimization_goal="修复 main.py 的测试失败，保持测试文件不变",
+            round_contract={
+                "target_files": ["main.py", "tests/test_main.py"],
+                "acceptance_checks": ["pytest tests/test_main.py -q"],
+                "expected_diff": ["In main.py: Fix implementation"],
+            },
+            modified_files=["tests/test_main.py"],
+            code_diff="MODIFIED tests/test_main.py: changed expectation",
+        )
+
+        result = _evaluate_round_outcome(state, build_passed=True)
+
+        assert result["objective_completed"] is False
+        assert result["readonly_violations"] == ["tests/test_main.py"]
+        assert result["replan_required"] is True
+
 
 class TestInteractNode:
     def test_auto_mode_continues_with_replan_signal(self, tmp_project):

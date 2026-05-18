@@ -73,6 +73,15 @@ class OPCConsole:
             self.console.print(f"\n{emoji} [bold magenta]{phase_name}[/bold magenta]")
         else:
             print(f"\n{emoji} {phase_name}")
+
+    def print_section(self, title: str):
+        """Print a section heading."""
+        if self._rich:
+            self.console.print()
+            self.console.rule(f"[bold cyan]{title}[/bold cyan]", style="cyan")
+        else:
+            print(f"\n{title}")
+            print("-" * len(title))
     
     def print_diff_summary(self, diff_text: str):
         """Print code diff with syntax highlighting."""
@@ -152,3 +161,10 @@ class OPCConsole:
             self.console.print(f"[bold green]✅ {message}[/bold green]")
         else:
             print(f"✅ {message}")
+
+    def print_info(self, message: str):
+        """Print informational message."""
+        if self._rich:
+            self.console.print(f"[cyan]ℹ {message}[/cyan]")
+        else:
+            print(f"ℹ {message}")

@@ -25,6 +25,23 @@ class TestGraphCompilation:
         for expected in ["plan", "execute", "test", "archive", "report", "interact"]:
             assert expected in node_ids, f"Missing node: {expected}"
 
+    def test_graph_wires_full_round_chain(self):
+        app = create_optimizer_graph()
+        edges = {
+            (edge.source, edge.target, edge.data, edge.conditional)
+            for edge in app.get_graph().edges
+        }
+
+        assert ("task_router", "plan", None, False) in edges
+        assert ("plan", "execute", None, False) in edges
+        assert ("execute", "test", "run_test", True) in edges
+        assert ("execute", "archive", "skip_test", True) in edges
+        assert ("test", "archive", None, False) in edges
+        assert ("archive", "report", None, False) in edges
+        assert ("report", "interact", None, False) in edges
+        assert ("interact", "plan", "continue", True) in edges
+        assert ("plan", "__end__", None, False) not in edges
+
     def test_graph_requires_core_skill_registration(self):
         registry = SkillRegistry()
         registry.register(

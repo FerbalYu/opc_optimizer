@@ -1,60 +1,111 @@
 # Design
 
 ## Project Summary
-This delivery pass strengthens OPC Optimizer by fixing high-risk execution/import issues and improving the Web UI's ability to show workflow state at a glance.
+This delivery pass fixes the reliability gaps exposed by a real 5-round OPC
+Optimizer trial. The priority is not broad feature work; it is making the
+workflow trustworthy when it reports success, runs tests, protects user-owned
+verification files, and advances through LangGraph rounds.
 
 ## Goals
-- Make package-mode imports and `python -m opc_optimizer` entrypoints reliable.
-- Add regression tests that catch package import regressions.
-- Improve Web UI visualization for node state, progress, risk, timing, and recent activity.
-- Keep the existing static Three.js Web UI architecture.
+- Ensure the compiled LangGraph executes the full round chain:
+  `task_router -> plan -> execute -> test -> archive -> report -> interact`.
+- Keep CLI completion stable by matching `main.py` calls to `OPCConsole` APIs.
+- Prevent real pytest/assertion failures from being downgraded to environment
+  errors and static validation.
+- Make validation mode explicit so reports do not present static fallback as
+  real test success.
+- Protect tests and other read-only files when the user asks to fix
+  implementation code while keeping tests unchanged.
+- Add focused regression tests for the above behavior.
 
 ## Non-Goals
-- Rewriting the workflow engine.
-- Replacing the static Web UI with a bundler or framework.
-- Cleaning all existing broad exception handling or all import style debt in one pass.
-- Changing the LLM workflow contract.
+- Rewriting LangGraph orchestration or replacing the node model.
+- Replacing the LLM planning/execution protocol.
+- Building a new Web UI or introducing a frontend build toolchain.
+- Solving all import debt, all reporting polish, or all autonomous workflow
+  quality issues in one pass.
+- Making live LLM output deterministic in CI.
 
 ## Users and Workflows
-- Developer: runs the optimizer from the parent directory with `python -m opc_optimizer`, starts Web UI, and expects imports to work outside the test harness.
-- Operator: watches Web UI during optimization and needs quick visual feedback on current node, completed nodes, errors, changed files, and timing.
+- Developer: runs `python -m opc_optimizer` from the package parent and expects
+  the workflow to complete without crashing at summary time.
+- Operator: runs autonomous rounds and needs test status to mean what it says.
+- Maintainer: uses regression tests to catch graph topology, validation, and
+  write-scope regressions before another live 5-round trial.
 
 ## Product Decisions
-- Treat package-mode import failure as the first blocker because it invalidates README usage and release packaging.
-- Improve the existing Web UI rather than replacing it, because it already has Three.js, logs, diffs, rounds, stats, trace, and config tabs.
-- Use lightweight dashboard elements and scene indicators instead of adding a build step.
+- Treat false success as higher severity than incomplete optimization. A failed
+  real test should remain a failed real test unless the tooling itself truly
+  cannot run.
+- Treat acceptance-test files as read-only by default for "fix failing tests"
+  goals unless the user explicitly asks to add or change tests.
+- Prefer small, auditable fixes before broader refactors. The limited refactor
+  scope is verification and write-scope control only.
 
 ## Technical Decisions
-- Add a package initializer to provide compatibility aliases for the current absolute-import modules while preserving script-mode imports.
-- Add focused tests for package imports and UI visualization markup/scripts.
-- Add a Web UI overview rail and node state legend driven by existing WebSocket events.
-- Keep all new frontend code in `ui/web/index.html`.
+- `utils.static_validator.is_env_error()` should use specific tooling-error
+  patterns instead of broad `ImportError` / `cannot find` matches.
+- `nodes.test.test_node()` should populate structured validation metadata:
+  `validation_mode`, `real_tests_ran`, and `static_fallback_reason`.
+- Static fallback can pass static validation, but must not masquerade as a real
+  test pass in state, metrics, or reports.
+- `nodes.execute` should derive read-only paths from the goal and round
+  contract, then reject modifications before writing files.
+- Graph topology tests should inspect compiled edges directly.
+
+## Limited Refactor Scope
+- Introduce small helper functions before introducing new classes.
+- If the verification code keeps growing, extract a narrow
+  `utils/verification_runner.py` with a structured `VerificationResult`.
+- If write-scope rules keep growing, extract a narrow `RoundScope` helper for
+  writable and read-only paths.
+- Keep reports as consumers of structured state; do not let report code infer
+  validation truth from free-form terminal text.
 
 ## Architecture
-Package startup flows through `__main__.py` to `main.py`. `graph.py` imports package-relative nodes, while many node and utility modules still use legacy absolute imports. The package initializer bridges those names in package mode.
+`main.py` prepares state and streams the compiled graph from `graph.py`. The
+graph nodes remain in `nodes/`. `execute_node` owns LLM patch parsing and file
+writes. `test_node` owns build/test/UI verification and now records whether
+validation was real or static. `report_node` persists round reports and metrics.
 
-The Web UI receives WebSocket events from `ui/web_server.py`: `connected`, `node_start`, `node_complete`, `node_error`, `round_start`, `round_end`, `diff_update`, `round_history_update`, `cost_update`, `awaiting_input`, and `optimization_complete`. The enhanced visualization derives UI state from these events without changing backend event contracts.
+The trial failure showed two weak boundaries:
+
+- Verification boundary: build/test output was interpreted with overly broad
+  environment-error matching.
+- Write-scope boundary: acceptance-test files could be modified even when the
+  goal said they should remain unchanged.
+
+This pass tightens those boundaries without changing the public CLI contract.
 
 ## Acceptance Criteria
-- [ ] From the parent directory, `import opc_optimizer.graph` succeeds.
-- [ ] From the parent directory, `python -m opc_optimizer --help` exits successfully.
-- [ ] Tests cover package entrypoint/import behavior.
-- [ ] Web UI displays a compact workflow overview with node state, risk/errors, progress, changed files, and recent activity.
-- [ ] Web UI visualization updates on `node_start`, `node_complete`, `node_error`, `round_start`, `round_end`, and `diff_update`.
-- [ ] Focused tests pass.
+- [x] `python -m opc_optimizer --help` works from the parent directory.
+- [x] Compiled graph includes `plan -> execute` and does not include
+  `plan -> END`.
+- [x] `OPCConsole` exposes the methods used by `main.py` summary output.
+- [x] Pytest assertion/runtime failures are not classified as environment
+  errors.
+- [x] Static fallback is represented as static fallback, not real test success.
+- [x] Test files are blocked when the goal says tests should remain unchanged.
+- [x] Focused regression tests pass.
+- [x] Full test suite is run or any blocker is documented.
 
 ## Assumptions
-- Existing dirty worktree changes are intentional and must be preserved.
-- Static HTML/CSS/JS tests are sufficient for this pass; full browser rendering is optional unless a UI regression requires it.
-- The current root directory is intended to be importable as `opc_optimizer` from its parent.
+- Existing dirty worktree changes are agent work from the current delivery and
+  should be preserved unless proven unrelated.
+- Live LLM runs are useful for manual validation but too variable for CI.
+- Current project documents remain the source of truth for autonomous work.
 
 ## Risks
-- Compatibility aliases can hide remaining import debt. Mitigation: add tests and document a future gradual migration to relative imports.
-- Web UI script is large and single-file. Mitigation: keep additions localized and use stable element IDs for tests.
-- CDN-based Three.js and Chart.js remain external dependencies. Mitigation: avoid adding new external frontend dependencies.
+- Over-tightening environment-error detection may turn genuine missing-tool
+  cases into normal failures. Mitigation: keep explicit tests for command-not-
+  found and missing pytest/tooling cases.
+- Read-only path detection from natural language may be imperfect. Mitigation:
+  start with conservative rules for tests and explicit "tests unchanged" goals.
+- Static fallback semantics may require updates across reports and tests.
+  Mitigation: add structured fields first, then adapt consumers.
 
 ## Suggested Later Improvements
-- Convert internal imports to package-relative imports module by module.
-- Add a packaging file such as `pyproject.toml`.
-- Split `ui/web/index.html` into separate static CSS and JS files.
-- Add Playwright smoke coverage for the Web UI scene once network/CDN behavior is controlled.
+- Extract `VerificationRunner` and `RoundScope` once the current helpers settle.
+- Add deterministic e2e coverage with mocked LLM responses.
+- Continue gradual package-relative import migration.
+- Improve final report wording for static fallback and low-value rounds.
