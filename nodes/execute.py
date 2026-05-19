@@ -10,6 +10,7 @@ from utils.llm import LLMService
 from utils.file_ops import read_file, write_to_file, append_to_file, get_project_files
 from utils.code_reviewer import CodeReviewer
 from utils.methodology import EXECUTE_METHODOLOGY
+from utils.prompt_language import user_visible_language_directive
 from utils.constants import MAX_FILES, MAX_FILE_CONTENT_LENGTH
 
 logger = logging.getLogger("opc.execute")
@@ -572,15 +573,15 @@ def _request_diff_review(
     for line in diff_preview.split("\n")[:20]:
         logger.info(f"  {line}")
     if len(diff_preview.split("\n")) > 20:
-        logger.info(f"  ... ({len(diff_preview.split(chr(10))) - 20} more lines)")
+        logger.info(f"  ...（还有 {len(diff_preview.split(chr(10))) - 20} 行）")
     logger.info(f"{'=' * 60}")
 
     if auto_mode:
-        logger.info("Auto-mode: accepting fuzzy match")
+        logger.info("自动模式：接受 fuzzy match")
         return True
 
     try:
-        answer = input(f"Accept this change? [y/N]: ").strip().lower()
+        answer = input("接受这个改动吗？[y/N]: ").strip().lower()
         return answer in ("y", "yes")
     except (EOFError, KeyboardInterrupt):
         return False
@@ -661,6 +662,7 @@ def execute_node(state: OptimizerState) -> OptimizerState:
     expected_diff_text = "\n".join(f"- {item}" for item in expected_diff) or "- (none)"
     readonly_paths = sorted(set(target_files) - set(execute_allowed_paths))
     readonly_text = "\n".join(f"- {path}" for path in readonly_paths) or "- (none)"
+    language_directive = user_visible_language_directive()
 
     # ── Opt-4: Arch context injection ─────────────────────────────
     # Injected at the very top of the prompt so the model sees the global
@@ -677,33 +679,35 @@ def execute_node(state: OptimizerState) -> OptimizerState:
 
     # v2.4.0: SEARCH/REPLACE prompt format
     prompt = f"""You are the Execution Agent for a code optimization workflow.
-{preamble_block}{arch_preamble}Target Project: {project_path}
+{preamble_block}{arch_preamble}目标项目: {project_path}
 
-Here is the current optimization plan:
+当前优化计划:
 {current_plan}
 
-Structured round contract:
+结构化轮次合约:
 ```json
 {contract_json}
 ```
 
-Acceptance checks for this round:
+{language_directive}
+
+本轮验收检查:
 {acceptance_text}
 
-Expected diff for this round:
+本轮预期改动:
 {expected_diff_text}
 
-Read-only files for this round (context only, do not edit):
+本轮只读文件（仅作上下文，不要编辑）:
 {readonly_text}
 
-Here are the actual file contents from the project:
+以下是真实项目文件内容:
 {files_context}
 """
 
     if docs_context:
         prompt += f"""
 
-Relevant framework/library docs grounding:
+相关框架/库文档依据:
 {docs_context}
 """
 
@@ -736,6 +740,7 @@ RULES:
 - Copy enough context lines to make the match unambiguous
 - Stay inside the round contract. If a useful change would require files outside the contract, do not propose it in this round.
 - Each proposed change should help satisfy at least one acceptance check and match the expected diff.
+- Human-readable `reason` values in JSON fallback or changelog-style text should use Simplified Chinese. Keep code, paths, commands, and SEARCH/REPLACE markers unchanged.
 
 Allowed filepaths for this task:
 {allowed_paths_text}
@@ -756,7 +761,7 @@ Allowed filepaths for this task:
             [
                 {
                     "role": "system",
-                    "content": f"You are the Execution Agent. Propose precise file modifications using SEARCH/REPLACE blocks. If you cannot use that format, fall back to JSON with 'modifications' array containing filepath/old_content_snippet/new_content/reason.\n{EXECUTE_METHODOLOGY}",
+                    "content": f"You are the Execution Agent. Propose precise file modifications using SEARCH/REPLACE blocks. If you cannot use that format, fall back to JSON with 'modifications' array containing filepath/old_content_snippet/new_content/reason. Human-readable reason text should use Simplified Chinese; keep machine protocols in English.\n{language_directive}\n{EXECUTE_METHODOLOGY}",
                 },
                 {"role": "user", "content": prompt},
             ]
@@ -812,7 +817,7 @@ If no safe change is possible, return exactly: NO_CHANGES
                 [
                     {
                         "role": "system",
-                        "content": f"You are the Execution Agent. Output only valid SEARCH/REPLACE blocks with real relative filepaths from the provided allowlist, or exactly NO_CHANGES.\n{EXECUTE_METHODOLOGY}",
+                        "content": f"You are the Execution Agent. Output only valid SEARCH/REPLACE blocks with real relative filepaths from the provided allowlist, or exactly NO_CHANGES. Keep machine protocols in English; any human-readable reason text must use Simplified Chinese.\n{language_directive}\n{EXECUTE_METHODOLOGY}",
                     },
                     {"role": "user", "content": retry_prompt},
                 ]

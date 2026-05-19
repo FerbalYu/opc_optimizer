@@ -135,5 +135,5 @@ class TestExecuteIntegration:
         result = execute_node(state)
         assert result["code_diff"] == "No changes parsed from LLM output."
         prompt = mock_instance.call_log[0]["messages"][1]["content"]
-        assert "Relevant framework/library docs grounding" in prompt
+        assert "相关框架/库文档依据" in prompt
         assert "Use ref() correctly." in prompt

@@ -36,38 +36,38 @@ def report_node(state: OptimizerState) -> OptimizerState:
 
     logger.info(f"Generating summary report for Round {current_round}...")
 
-    report_content = f"""# OPC Round Report - Round {current_round}
-## Goal
+    report_content = f"""# OPC 第 {current_round} 轮报告
+## 优化目标
 {state.get("optimization_goal")}
 
-## Plan
+## 本轮计划
 {state.get("current_plan")}
 
-## Code Diff Summary
+## 代码改动摘要
 {state.get("code_diff")}
 
-## Test Results
+## 测试结果
 ```text
 {state.get("test_results")}
 ```
 
-## Verification Status
-- Validation mode: {validation_mode}
-- Real tests ran: {real_tests_ran}
-- Static fallback reason: {static_fallback_reason or "N/A"}
+## 验证状态
+- 验证模式: {validation_mode}
+- 已运行真实测试: {real_tests_ran}
+- 静态降级原因: {static_fallback_reason or "N/A"}
 
-## Diff Evidence
+## Diff 证据
 {diff_evidence}
 
-## Round Evaluation
+## 本轮评估
 ```json
 {json.dumps(round_evaluation, ensure_ascii=False, indent=2)}
 ```
 
-## Suggestions For Next Round
+## 下一轮建议
 {state.get("suggestions")}
 
-## Node Timings
+## 节点耗时
 """
 
     timings = state.get("node_timings", {}) or {}
@@ -75,7 +75,7 @@ def report_node(state: OptimizerState) -> OptimizerState:
         for node_name, elapsed in timings.items():
             report_content += f"- **{node_name}**: {elapsed}s\n"
     else:
-        report_content += "_(no timing data)_\n"
+        report_content += "_(无耗时数据)_\n"
 
     # Handle tests mocking LLMService variables globally
     total_cost = getattr(LLMService, "_total_cost", 0.0)
@@ -92,10 +92,10 @@ def report_node(state: OptimizerState) -> OptimizerState:
         comp_tokens = 0
 
     report_content += f"""
-## API Cost
-- Round cumulative: ${total_cost:.4f} USD
-- Total calls: {total_calls}
-- Total tokens: {prompt_tokens + comp_tokens:,}
+## API 成本
+- 本轮累计: ${total_cost:.4f} USD
+- 调用次数: {total_calls}
+- Token 总数: {prompt_tokens + comp_tokens:,}
 """
 
     # ── Metrics section (autoresearch-inspired evolution archive) ──
@@ -107,17 +107,17 @@ def report_node(state: OptimizerState) -> OptimizerState:
         if hasattr(round_elapsed, "_mock_name"): round_elapsed = 0.0
 
         report_content += f"""
-## Metrics
-| Metric | Value |
+## 指标
+| 指标 | 值 |
 |--------|-------|
-| Value Score | {round_metrics.get('value_score', 'N/A')}/10 |
-| Files Changed | {round_metrics.get('files_changed_count', 0)} |
-| Lines Added | +{round_metrics.get('lines_added', 0)} |
-| Lines Removed | -{round_metrics.get('lines_removed', 0)} |
-| Net Delta | {round_metrics.get('net_lines_delta', 0)} |
-| Round Elapsed | {round_elapsed:.1f}s |
-| LLM Cost | ${llm_cost_usd:.4f} |
-| Rollback | {'Yes' if round_metrics.get('is_rollback') else 'No'} |
+| 价值评分 | {round_metrics.get('value_score', 'N/A')}/10 |
+| 变更文件数 | {round_metrics.get('files_changed_count', 0)} |
+| 新增行数 | +{round_metrics.get('lines_added', 0)} |
+| 删除行数 | -{round_metrics.get('lines_removed', 0)} |
+| 净变化 | {round_metrics.get('net_lines_delta', 0)} |
+| 本轮耗时 | {round_elapsed:.1f}s |
+| LLM 成本 | ${llm_cost_usd:.4f} |
+| 是否回滚 | {'是' if round_metrics.get('is_rollback') else '否'} |
 """
 
     # Write report to external workspace (Opt-6)

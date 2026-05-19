@@ -155,6 +155,22 @@ class TestStaticHandler:
         finally:
             _StaticHandler._landing_mode = original
 
+    def test_health_endpoint(self):
+        """Health endpoint should return a small 200 response."""
+        handler = object.__new__(_StaticHandler)
+        handler.path = "/health"
+        handler.wfile = BytesIO()
+        statuses = []
+        headers = []
+
+        handler.send_response = lambda status: statuses.append(status)
+        handler.send_header = lambda key, value: headers.append((key, value))
+        handler.end_headers = lambda: None
+
+        assert handler._handle_health() is True
+        assert statuses == [200]
+        assert handler.wfile.getvalue() == b"ok"
+
 
 class TestStartServer:
     """Test startup wiring for the web server."""

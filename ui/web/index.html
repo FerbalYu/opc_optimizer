@@ -87,6 +87,15 @@ body {
   font-size: 13px;
   color: #8b949e;
 }
+.mode-badge {
+  font-size: 11px;
+  color: var(--accent-teal);
+  padding: 4px 9px;
+  border: 1px solid rgba(57,210,192,0.35);
+  border-radius: 999px;
+  background: rgba(57,210,192,0.12);
+  white-space: nowrap;
+}
 .status-dot {
   width: 10px; height: 10px;
   border-radius: 50%;
@@ -675,30 +684,31 @@ body {
     <div id="top-bar">
       <div class="status-dot idle" id="status-dot"></div>
       <div class="title">⛏️ OPC Optimizer</div>
+      <div class="mode-badge" id="mode-badge">Web 控制台</div>
       <div class="node-name" id="current-node">等待连接...</div>
       <div class="round-info" id="round-info">—</div>
       <div id="progress-wrap"><div id="progress-bar"></div></div>
       <button id="theme-toggle" title="切换主题">🌙</button>
     </div>
-    <div id="task-strip"><div class="task-strip-empty">No active tasks yet.</div></div>
-    <div id="workflow-overview" aria-label="Workflow runtime overview">
+    <div id="task-strip"><div class="task-strip-empty">暂无活跃任务。</div></div>
+    <div id="workflow-overview" aria-label="工作流运行概览">
       <div class="overview-head">
-        <div class="overview-title">Workflow Overview</div>
-        <div id="overview-risk" class="overview-risk">Stable</div>
+        <div class="overview-title">工作流概览</div>
+        <div id="overview-risk" class="overview-risk">稳定</div>
       </div>
       <div id="node-state-grid" class="node-state-grid"></div>
       <div class="overview-metrics">
         <div class="overview-metric">
           <div class="metric-value" id="overview-round">-</div>
-          <div class="metric-label">Round</div>
+          <div class="metric-label">轮次</div>
         </div>
         <div class="overview-metric">
           <div class="metric-value" id="overview-files">0</div>
-          <div class="metric-label">Changed Files</div>
+          <div class="metric-label">变更文件</div>
         </div>
         <div class="overview-metric">
           <div class="metric-value" id="overview-errors">0</div>
-          <div class="metric-label">Errors</div>
+          <div class="metric-label">错误</div>
         </div>
       </div>
       <div id="overview-recent"></div>
@@ -716,38 +726,38 @@ body {
   </div>
   <div id="task-review-overlay" class="modal-overlay">
     <div class="modal-card">
-      <h3>Review This Round's Tasks</h3>
-      <div class="modal-sub">Select what can run. If all tasks are unsuitable, ask AI for a new batch.</div>
+      <h3>审核本轮任务</h3>
+      <div class="modal-sub">选择可以执行的任务。如果全部不合适，可以要求 AI 重新规划。</div>
       <div id="task-review-pm-summary" style="margin-bottom: 15px; padding: 12px; background: rgba(88,166,255,0.1); border-left: 4px solid var(--accent-blue); border-radius: 6px; font-size: 13px; line-height: 1.6; color: var(--text-primary); display: none;"></div>
       <div class="review-grid">
         <div id="task-review-list" class="review-list"></div>
         <div class="review-detail">
-          <div id="task-review-detail-title" style="font-size:13px;color:var(--text-primary);margin-bottom:8px;">Select a task</div>
+          <div id="task-review-detail-title" style="font-size:13px;color:var(--text-primary);margin-bottom:8px;">选择一个任务</div>
           <div class="modal-sub" id="task-review-detail-file"></div>
-          <pre id="task-review-detail-body">No task selected.</pre>
+          <pre id="task-review-detail-body">尚未选择任务。</pre>
           <ul id="task-review-checks" class="review-checks"></ul>
         </div>
       </div>
       <div class="modal-actions">
-        <textarea id="task-review-note" placeholder="Optional note for replan or scope trimming."></textarea>
+        <textarea id="task-review-note" placeholder="可选：填写重新规划或收缩范围的说明。"></textarea>
         <div class="action-buttons">
-          <button class="btn-close" onclick="closeTaskReview()">Close</button>
-          <button class="btn-replan" onclick="submitTaskReview(false)">Replan</button>
-          <button class="btn-approve" onclick="submitTaskReview(true)">Approve Selected</button>
+          <button class="btn-close" onclick="closeTaskReview()">关闭</button>
+          <button class="btn-replan" onclick="submitTaskReview(false)">重新规划</button>
+          <button class="btn-approve" onclick="submitTaskReview(true)">批准所选</button>
         </div>
       </div>
     </div>
   </div>
   <div id="task-detail-overlay" class="modal-overlay">
     <div class="modal-card">
-      <h3 id="task-detail-title">Task Detail</h3>
+      <h3 id="task-detail-title">任务详情</h3>
       <div class="modal-sub" id="task-detail-file"></div>
-      <pre id="task-detail-body" style="width:100%;max-height:min(46vh,420px);overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.65;font-family:var(--font-ui);">No task selected.</pre>
+      <pre id="task-detail-body" style="width:100%;max-height:min(46vh,420px);overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.65;font-family:var(--font-ui);">尚未选择任务。</pre>
       <ul id="task-detail-checks" class="review-checks"></ul>
       <div class="modal-actions">
         <div></div>
         <div class="action-buttons">
-          <button class="btn-close" onclick="closeTaskDetail()">Close</button>
+          <button class="btn-close" onclick="closeTaskDetail()">关闭</button>
         </div>
       </div>
     </div>
@@ -872,7 +882,7 @@ body {
       <div class="stat-card"><div class="label">已完成节点</div><div class="value green" id="stat-nodes">0</div></div>
       <div class="stat-card"><div class="label">API 调用</div><div class="value orange" id="stat-calls">0</div></div>
       <div class="stat-card"><div class="label">总耗时</div><div class="value purple" id="stat-time">0s</div></div>
-      <div class="stat-card"><div class="label">🧹 Formatter</div><div class="value" id="stat-formatter" style="font-size:11px;color:#8b949e;">--</div></div>
+      <div class="stat-card"><div class="label">🧹 格式化</div><div class="value" id="stat-formatter" style="font-size:11px;color:#8b949e;">--</div></div>
     </div>
     <div id="timings-panel">
       <h4>⏱️ 节点耗时</h4>
@@ -908,6 +918,8 @@ const HTTP_PORT = Number.parseInt(location.port || '8765', 10) || 8765;
 const WS_PORT = HTTP_PORT + 1;
 const WS_PROTOCOL = location.protocol === 'https:' ? 'wss' : 'ws';
 const WS_URL = `${WS_PROTOCOL}://${location.hostname}:${WS_PORT}`;
+const UI_MODE = new URLSearchParams(location.search).get('mode') || 'web';
+const VISUAL_COMPANION = UI_MODE === 'visual';
 const NODES = ['plan', 'execute', 'test', 'archive', 'report', 'interact'];
 const NODE_COLORS = {
   plan:     0x58a6ff, // blue
@@ -935,6 +947,11 @@ const STATION_FACING = {
   plan: Math.PI,     execute: Math.PI,     test: Math.PI,        // front row: face back wall
   archive: 0, report: 0, interact: 0,   // back row: face front
 };
+
+if (VISUAL_COMPANION) {
+  document.getElementById('mode-badge').textContent = 'CLI 副屏';
+  document.getElementById('current-node').textContent = '等待 CLI 事件...';
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  THREE.JS SETUP
@@ -1534,12 +1551,12 @@ function renderWorkflowOverview() {
     riskEl.className = 'overview-risk';
     if (visualState.errors > 0) {
       riskEl.classList.add('error');
-      riskEl.textContent = 'Error';
+      riskEl.textContent = '异常';
     } else if (visualState.changedFiles > 5) {
       riskEl.classList.add('warn');
       riskEl.textContent = 'Large diff';
     } else {
-      riskEl.textContent = 'Stable';
+      riskEl.textContent = '稳定';
     }
   }
   if (recentEl) {
@@ -1882,11 +1899,11 @@ window.loadConfig = function() {
         { label: '🎯 优化目标', value: cfg.goal || '--' },
         { label: '🤖 LLM 模型', value: cfg.state_model || cfg.model || '默认' },
         { label: '🔄 最大轮次', value: cfg.max_rounds || '--' },
-        { label: '🧹 Formatter', value: cfg.formatter || 'auto' },
+        { label: '🧹 格式化工具', value: cfg.formatter || 'auto' },
         { label: '⏱️ 超时', value: (cfg.timeout || 120) + 's' },
         { label: '🧾 计划审核', value: cfg.skip_plan_review ? '跳过审核 / 全自动' : '人工审核 / 需确认' },
         { label: '🏜️ Dry Run', value: cfg.dry_run ? '是' : '否' },
-        { label: '🤖 Auto', value: cfg.auto ? '是' : '否' },
+        { label: '🤖 自动', value: cfg.auto ? '是' : '否' },
       ];
       grid.innerHTML = items.map(it =>
         `<div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:10px;">` +
@@ -2085,7 +2102,7 @@ function connect() {
 function renderTaskStrip() {
   const strip = document.getElementById('task-strip');
   if (!currentTasks.length) {
-    strip.innerHTML = '<div class="task-strip-empty">No active tasks yet.</div>';
+    strip.innerHTML = '<div class="task-strip-empty">暂无活跃任务。</div>';
     return;
   }
   strip.innerHTML = currentTasks.map(task => {
@@ -2122,7 +2139,7 @@ function normalizeTask(task, index = 0) {
 }
 
 function renderTaskDetail(task, prefix) {
-  document.getElementById(`${prefix}-title`).textContent = task.title || 'Task Detail';
+  document.getElementById(`${prefix}-title`).textContent = task.title || '任务详情';
   document.getElementById(`${prefix}-file`).textContent = task.filepath || 'No file scope';
   document.getElementById(`${prefix}-body`).textContent = task.detail || 'No detail available.';
   const checks = document.getElementById(`${prefix}-checks`)
@@ -2295,10 +2312,10 @@ function handleEvent(msg) {
       if (data.round) {
         currentRoundNum = data.round;
         document.getElementById('stat-round').textContent = `#${data.round}`;
-        document.getElementById('round-info').textContent = `Round ${data.round}`;
+        document.getElementById('round-info').textContent = `第 ${data.round} 轮`;
       }
       addLog(`▶ ${data.node} 开始执行...`, 'node-start');
-      addOverviewEvent('Started', data.node || '');
+      addOverviewEvent('已开始', data.node || '');
       renderWorkflowOverview();
       const idx = NODES.indexOf(data.node);
       if (idx >= 0) {
@@ -2320,7 +2337,7 @@ function handleEvent(msg) {
         updateTimingBars(timings);
       }
       addLog(`✔ ${data.node} 完成 (${data.elapsed || '?'}s)`, 'node-complete');
-      addOverviewEvent('Completed', `${data.node || ''} ${data.elapsed || '?'}s`);
+      addOverviewEvent('已完成', `${data.node || ''} ${data.elapsed || '?'}s`);
       renderWorkflowOverview();
       const cidx = NODES.indexOf(data.node);
       if (cidx >= 0) {
@@ -2333,7 +2350,7 @@ function handleEvent(msg) {
       setNodeVisualState(data.node, 'error');
       visualState.errors++;
       document.getElementById('status-dot').className = 'status-dot error';
-      addOverviewEvent('Error', data.node || '');
+      addOverviewEvent('错误', data.node || '');
       renderWorkflowOverview();
       addLog(`✖ ${data.node} 错误: ${data.error || 'unknown'}`, 'node-error');
       break;
@@ -2347,14 +2364,14 @@ function handleEvent(msg) {
       visualState.changedFiles = 0;
       resetNodeVisualState();
       document.getElementById('stat-round').textContent = `#${data.round || '?'}`;
-      addOverviewEvent('Round started', `#${data.round || '?'}`);
+      addOverviewEvent('轮次开始', `#${data.round || '?'}`);
       renderWorkflowOverview();
       addLog(`🔄 第 ${data.round} 轮开始`, 'node-start');
       document.getElementById('progress-bar').style.width = '0%';
       break;
       
     case 'round_end':
-      addOverviewEvent('Round completed', `#${data.round || '?'}`);
+      addOverviewEvent('轮次完成', `#${data.round || '?'}`);
       renderWorkflowOverview();
       addLog(`🏁 第 ${data.round} 轮完成`, 'node-complete');
       // Save round data
@@ -2398,7 +2415,7 @@ function handleEvent(msg) {
         currentRoundDiffs += data.files.length;
         visualState.changedFiles += data.files.length;
         renderDiffs();
-        addOverviewEvent('Diff received', `${data.files.length} file(s)`);
+        addOverviewEvent('收到 Diff', `${data.files.length} 个文件`);
         renderWorkflowOverview();
         // Flash the diff tab
         const diffTab = document.querySelector('[data-tab="tab-diff"]');
@@ -2518,6 +2535,9 @@ canvas.addEventListener('dblclick', () => {
 });
 
 addLog('🎮 双击 3D 场景可进入演示模式', 'info');
+if (VISUAL_COMPANION) {
+  addLog('🧩 CLI 副屏模式：命令行继续作为主控，这里实时展示状态。', 'info');
+}
 addLog(`🔌 等待优化器连接 (${WS_URL})...`, 'info');
 
 </script>

@@ -68,7 +68,7 @@ class TestPlanNodeIntegration:
         assert os.path.exists(contract_path)
         with open(plan_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        assert "Round Contract" in content
+        assert "第 1 轮计划合约" in content
         assert "Fix bug in main.py" in content
 
     @patch("nodes.plan.LLMService")

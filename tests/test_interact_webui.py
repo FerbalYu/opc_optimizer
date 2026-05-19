@@ -103,6 +103,23 @@ class TestTryWebUIInteract:
             result = _try_web_ui_interact(state)
         assert result is False
 
+    def test_visual_companion_does_not_wait_for_web_command(self, monkeypatch):
+        """Visual companion mode emits round data but leaves CLI in control."""
+        state = _make_state()
+        emitted = []
+        monkeypatch.setenv("OPC_VISUAL_COMPANION", "1")
+
+        with patch.object(ws_mod, "_clients", [MagicMock()]):
+            with patch.object(ws_mod, "wait_for_user_command") as wait_mock:
+                with patch.object(ws_mod, "emit", side_effect=lambda t, d=None: emitted.append(t)):
+                    result = _try_web_ui_interact(state)
+
+        assert result is False
+        assert state["current_round"] == 1
+        assert "round_end" in emitted
+        assert "awaiting_input" not in emitted
+        wait_mock.assert_not_called()
+
     def test_round_end_includes_timings(self):
         """round_end event payload must include timing data from state."""
         state = _make_state()

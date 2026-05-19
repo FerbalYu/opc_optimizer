@@ -109,3 +109,34 @@ This pass tightens those boundaries without changing the public CLI contract.
 - Add deterministic e2e coverage with mocked LLM responses.
 - Continue gradual package-relative import migration.
 - Improve final report wording for static fallback and low-value rounds.
+
+## Visual Companion Direction
+The next product direction is a CLI-first 3D visual companion. The CLI remains
+the command surface for scriptable runs, while the existing Three.js monitor
+acts as a live sidecar for understanding state, rounds, diffs, and final
+outcome.
+
+## Visual Companion Goals
+- Add a `--visual` CLI mode that runs the normal optimizer and opens the 3D
+  monitor as a companion window.
+- Keep the companion read-mostly: it should display workflow events without
+  taking over the CLI interaction loop.
+- Reuse the existing WebSocket event stream and Three.js UI instead of
+  introducing a separate desktop stack.
+- Make the visual mode visibly distinct in Chinese as "CLI 副屏".
+
+## Visual Companion Non-Goals
+- Replacing `--web-ui` or the current browser-based control flow.
+- Building a native desktop app in this pass.
+- Redesigning the full 3D scene or adding complex character animation before
+  the CLI/visual contract is stable.
+
+## Visual Companion Acceptance Criteria
+- [x] `python -m opc_optimizer <project> --visual` starts the 3D monitor and
+  then runs the same optimizer flow as CLI mode.
+- [x] `--visual` appears in package help output.
+- [x] In visual companion mode, round-end events are emitted to the 3D monitor
+  without waiting for Web UI commands.
+- [x] The monitor shows a Chinese "CLI 副屏" mode indicator.
+- [x] Focused tests cover the new CLI flag, visual-only interaction behavior,
+  static UI marker, and Web UI readiness endpoint.

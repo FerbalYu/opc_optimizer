@@ -257,6 +257,18 @@ class _StaticHandler(SimpleHTTPRequestHandler):
             return True
         return False
 
+    def _handle_health(self) -> bool:
+        """Handle a lightweight readiness probe. Returns True if handled."""
+        if self.path.split("?", 1)[0] != "/health":
+            return False
+        body = b"ok"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return True
+
     def _handle_api_export_report(self) -> bool:
         """Handle /api/export-report endpoint. Returns True if handled."""
         if self.path != "/api/export-report":
@@ -379,6 +391,8 @@ class _StaticHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         """Handle GET requests with routing to handlers."""
+        if self._handle_health():
+            return
         if self._handle_landing_redirect():
             return
         if self._handle_api_export_report():

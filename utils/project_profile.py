@@ -376,14 +376,14 @@ Return a JSON object with:
 }}
 
 IMPORTANT:
-- optimization_hints should be 2-4 specific, actionable tips for THIS project type
+- optimization_hints should be 2-4 specific, actionable Simplified Chinese tips for THIS project type
 - scan_extensions should include ALL relevant source file extensions
 - Use null (not "null") for commands that don't apply
 """
 
     try:
         result = llm.generate_json([
-            {"role": "system", "content": "You are a project type detector. Return only valid JSON."},
+            {"role": "system", "content": "You are a project type detector. Return only valid JSON. Use Simplified Chinese for human-readable optimization_hints; keep commands, paths, and extensions unchanged."},
             {"role": "user", "content": prompt},
         ])
         result["detected_by"] = "llm"

@@ -100,7 +100,7 @@ def _stream_graph_events(app, initial_state: dict, tui) -> dict:
     latest_state = initial_state
     for event in app.stream(initial_state):
         for k, v in event.items():
-            tui.print_phase(f"Completed: {k}", "✔")
+            tui.print_phase(f"已完成: {k}", "✔")
             latest_state = v
             try:
                 from .ui.web_server import set_optimizer_state
@@ -182,9 +182,55 @@ def _keep_webui_alive(enabled: bool) -> None:
     if not enabled:
         return
 
-    print("\n🌐 Optimization complete. Web UI remains active. Press Ctrl+C to exit.")
+    print("\n🌐 优化完成。可视化窗口保持运行，按 Ctrl+C 退出。")
     while True:
         time.sleep(1)
+
+
+def _wait_for_web_ui_ready(http_port: int, timeout_seconds: float = 15.0) -> bool:
+    """Wait until the local Web UI HTTP server answers its health endpoint."""
+    import urllib.request
+
+    deadline = time.time() + timeout_seconds
+    url = f"http://127.0.0.1:{http_port}/health"
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1) as response:
+                return 200 <= response.status < 300
+        except Exception:
+            time.sleep(0.25)
+    return False
+
+
+def _start_web_ui_server(
+    http_port: int,
+    ws_port: int,
+    *,
+    landing: bool = False,
+    fetch_news: bool = True,
+    browser_url: str | None = None,
+) -> None:
+    """Start the existing Web UI server and optionally open a browser URL."""
+    try:
+        from .ui.web_server import start_server
+    except ImportError:
+        from ui.web_server import start_server
+
+    start_server(
+        http_port=http_port,
+        ws_port=ws_port,
+        open_browser=False,
+        landing=landing,
+        fetch_news=fetch_news,
+    )
+
+    if not _wait_for_web_ui_ready(http_port):
+        raise RuntimeError("Web UI server failed to start")
+
+    if browser_url:
+        import webbrowser
+
+        webbrowser.open(browser_url)
 
 
 def parse_args():
@@ -248,6 +294,11 @@ def parse_args():
         "--web-ui",
         action="store_true",
         help="Launch Minecraft-style 3D Web UI in browser",
+    )
+    parser.add_argument(
+        "--visual",
+        action="store_true",
+        help="启动 CLI 3D 可视化副屏，CLI 仍作为主控入口",
     )
     parser.add_argument(
         "--http-port",
@@ -402,41 +453,41 @@ def main():
 
             _setup_gitignore(config.project_path)
 
-            print(f"📁 Target Project : {config.project_path}")
-            print(f"🎯 Goal           : {config.optimization_goal}")
-            print(f"🔄 Max Rounds     : {config.max_rounds}")
-            print(f"📦 Archive Every  : {config.archive_every_n_rounds} rounds")
-            print(f"🧭 Run Mode       : {run_mode}")
+            print(f"📁 目标项目       : {config.project_path}")
+            print(f"🎯 优化目标       : {config.optimization_goal}")
+            print(f"🔄 最大轮数       : {config.max_rounds}")
+            print(f"📦 归档间隔       : 每 {config.archive_every_n_rounds} 轮")
+            print(f"🧭 运行模式       : {run_mode}")
             if run_args.dry_run:
-                print("🏜️  Dry Run        : YES (no file modifications)")
+                print("🏜️  试运行         : 是（不修改文件）")
             if run_args.auto:
-                print("🤖 Auto Mode      : YES (no user interaction)")
+                print("🤖 自动模式       : 是（无需用户交互）")
 
             for label, key in [
-                ("Plan", "plan_model"),
-                ("Execute", "execute_model"),
-                ("Test", "test_model"),
+                ("计划", "plan_model"),
+                ("执行", "execute_model"),
+                ("测试", "test_model"),
             ]:
                 val = llm_config.get(key)
                 if val:
-                    print(f"🔧 {label} Model    : {val}")
+                    print(f"🔧 {label}模型      : {val}")
 
             if run_args.timeout != 120:
-                print(f"⏱️  LLM Timeout    : {run_args.timeout}s")
+                print(f"⏱️  LLM 超时       : {run_args.timeout}s")
 
             # Print formatter info
             formatter = os.environ.get("OPC_FORMATTER", "auto-detect")
-            print(f"🎨 Formatter      : {formatter}")
+            print(f"🎨 格式化工具     : {formatter}")
             if getattr(run_args, "no_format", False):
-                print("   (auto-formatting disabled)")
+                print("   （已禁用自动格式化）")
 
             # ── Build or load graph ──
             if web_already_started:
-                print("\n⏳ Waiting for graph result via Web UI...")
+                print("\n⏳ 正在等待 Web UI 返回图执行结果...")
                 from .ui.web_server import wait_for_result
 
                 result = wait_for_result()
-                tui.print_success("Graph execution completed via Web UI!")
+                tui.print_success("已通过 Web UI 完成图执行！")
             else:
                 from .graph import create_optimizer_graph
 
@@ -444,9 +495,9 @@ def main():
                 initial_state = _prepare_initial_state(
                     config, run_args, llm_config, tui, run_mode
                 )
-                tui.print_phase("Starting optimization workflow", "🚀")
+                tui.print_phase("开始执行优化工作流", "🚀")
                 result = _stream_graph_events(app, initial_state, tui)
-                tui.print_success("Optimization workflow completed!")
+                tui.print_success("优化工作流已完成！")
 
             # ── Summary ──
             rounds = result.get("current_round", 0)
@@ -455,66 +506,67 @@ def main():
             stops = result.get("should_stop", False)
             stop_reason = result.get("stop_reason", "")
 
-            tui.print_section("Optimization Summary")
-            print(f"   Rounds completed : {rounds}/{result.get('max_rounds', '?')}")
-            print(f"   Files modified    : {len(modified)}")
+            tui.print_section("优化摘要")
+            print(f"   已完成轮数       : {rounds}/{result.get('max_rounds', '?')}")
+            print(f"   修改文件数       : {len(modified)}")
             if errors:
-                print(f"   Errors            : {len(errors)}")
+                print(f"   错误数           : {len(errors)}")
                 for err in errors[:5]:
                     print(f"      - {err[:80]}")
                 if len(errors) > 5:
-                    print(f"      ... and {len(errors)-5} more")
+                    print(f"      ... 还有 {len(errors)-5} 条")
             else:
-                print(f"   Errors            : 0")
+                print(f"   错误数           : 0")
 
             if stops:
-                print(f"\n   Stop reason       : {stop_reason or 'User requested stop'}")
+                print(f"\n   停止原因         : {stop_reason or '用户请求停止'}")
 
             # Print reports
             reports = result.get("round_reports", [])
             if reports:
-                print(f"\n📋 Optimization Reports ({len(reports)}):")
+                print(f"\n📋 优化报告（{len(reports)}）：")
                 for i, r in enumerate(reports[:3], 1):
-                    title = r.get("title", "Untitled") if isinstance(r, dict) else str(r)[:60]
+                    title = r.get("title", "未命名") if isinstance(r, dict) else str(r)[:60]
                     print(f"   {i}. {title}")
                 if len(reports) > 3:
-                    print(f"   ... and {len(reports)-3} more")
+                    print(f"   ... 还有 {len(reports)-3} 个")
 
             return result
 
         # ── Main execution dispatch ──
-        if args.web_ui:
+        if args.visual and not args.web_ui:
             http_port, ws_port = _resolve_web_ui_ports(args.http_port)
-            print(f"🌐 Starting Web UI on http://127.0.0.1:{http_port}")
+            os.environ["OPC_VISUAL_COMPANION"] = "1"
+            visual_url = f"http://127.0.0.1:{http_port}/index.html?mode=visual"
+            print(f"🧩 启动 3D 可视化副屏: {visual_url}")
+            print(f"   WebSocket: ws://127.0.0.1:{ws_port}")
+            print("   CLI 继续作为主控；副屏只展示状态、轮次和 diff。")
+            _start_web_ui_server(
+                http_port,
+                ws_port,
+                landing=False,
+                fetch_news=False,
+                browser_url=visual_url,
+            )
+
+            result = _execute_session(args)
+            if result.get("should_stop"):
+                tui.print_info("Optimization stopped by user.")
+            else:
+                tui.print_success("All optimization rounds completed!")
+            _keep_webui_alive(True)
+        elif args.web_ui:
+            http_port, ws_port = _resolve_web_ui_ports(args.http_port)
+            print(f"🌐 启动 Web UI: http://127.0.0.1:{http_port}")
             print(f"   WebSocket: ws://127.0.0.1:{ws_port}")
             print()
-            # Start web server in background thread
-            from .ui.web_server import start_server
-            import threading
-
-            server_thread = threading.Thread(
-                target=start_server,
-                args=(http_port, ws_port),
-                daemon=True,
+            _start_web_ui_server(
+                http_port,
+                ws_port,
+                landing=False,
+                fetch_news=True,
+                browser_url=f"http://127.0.0.1:{http_port}",
             )
-            server_thread.start()
-            # Wait for server to be ready
-            import urllib.request
-
-            for _ in range(30):
-                try:
-                    urllib.request.urlopen(f"http://127.0.0.1:{http_port}/health", timeout=1)
-                    break
-                except Exception:
-                    time.sleep(0.5)
-            else:
-                tui.print_error("Web UI server failed to start")
-                sys.exit(1)
-
-            # Open browser
-            import webbrowser
-
-            webbrowser.open(f"http://127.0.0.1:{http_port}")
 
             if args.project_path:
                 # Run graph with live UI updates

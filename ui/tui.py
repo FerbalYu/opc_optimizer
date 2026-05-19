@@ -45,9 +45,9 @@ class OPCConsole:
     def print_config(self, config: Dict[str, Any]):
         """Print configuration summary."""
         if self._rich:
-            table = Table(title="⚙️ Configuration", box=box.SIMPLE, show_header=False)
-            table.add_column("Key", style="bold")
-            table.add_column("Value", style="green")
+            table = Table(title="⚙️ 配置", box=box.SIMPLE, show_header=False)
+            table.add_column("键", style="bold")
+            table.add_column("值", style="green")
             for key, val in config.items():
                 table.add_row(str(key), str(val))
             self.console.print(table)
@@ -58,13 +58,13 @@ class OPCConsole:
     def print_round_start(self, round_num: int, max_rounds: int, goal: str):
         """Print round start heading."""
         if self._rich:
-            header = f"🔄 Round {round_num}/{max_rounds}"
+            header = f"🔄 第 {round_num}/{max_rounds} 轮"
             self.console.print()
             self.console.rule(header, style="bright_yellow")
             self.console.print(f"  🎯 {goal}", style="dim")
         else:
             print(f"\n{'='*40}")
-            print(f"🔄 Round {round_num}/{max_rounds} | 🎯 {goal}")
+            print(f"🔄 第 {round_num}/{max_rounds} 轮 | 🎯 {goal}")
             print(f"{'='*40}")
     
     def print_phase(self, phase_name: str, emoji: str = "▶"):
@@ -87,66 +87,66 @@ class OPCConsole:
         """Print code diff with syntax highlighting."""
         if not diff_text or diff_text == "No file changes proposed.":
             if self._rich:
-                self.console.print("  [dim]No changes made[/dim]")
+                self.console.print("  [dim]没有文件改动[/dim]")
             else:
-                print("  No changes made")
+                print("  没有文件改动")
             return
         
         if self._rich:
             # Show truncated if too long
             display = diff_text[:2000] + "..." if len(diff_text) > 2000 else diff_text
             syntax = Syntax(display, "diff", theme="monokai", line_numbers=False)
-            self.console.print(Panel(syntax, title="📝 Changes", border_style="green", expand=False))
+            self.console.print(Panel(syntax, title="📝 变更", border_style="green", expand=False))
         else:
             lines = diff_text.split("\n")[:20]
             for line in lines:
                 print(f"  {line}")
             if len(diff_text.split("\n")) > 20:
-                print("  ... (truncated)")
+                print("  ...（已截断）")
     
     def print_token_usage(self, prompt: int, completion: int, total: int, calls: int):
         """Print token usage dashboard."""
         if self._rich:
-            table = Table(title="📊 Token Usage", box=box.ROUNDED)
-            table.add_column("Metric", style="bold")
-            table.add_column("Value", justify="right", style="cyan")
-            table.add_row("API Calls", str(calls))
+            table = Table(title="📊 Token 用量", box=box.ROUNDED)
+            table.add_column("指标", style="bold")
+            table.add_column("值", justify="right", style="cyan")
+            table.add_row("API 调用", str(calls))
             table.add_row("Prompt Tokens", f"{prompt:,}")
             table.add_row("Completion Tokens", f"{completion:,}")
-            table.add_row("Total Tokens", f"{total:,}")
+            table.add_row("总 Tokens", f"{total:,}")
             self.console.print(table)
         else:
-            print(f"  API Calls: {calls} | Tokens: {prompt:,} + {completion:,} = {total:,}")
+            print(f"  API 调用: {calls} | Tokens: {prompt:,} + {completion:,} = {total:,}")
     
     def print_build_result(self, output: str, success: bool):
         """Print build result with status."""
         if self._rich:
             style = "green" if success else "red"
             icon = "✅" if success else "❌"
-            title = f"{icon} Build {'Passed' if success else 'Failed'}"
+            title = f"{icon} 构建{'通过' if success else '失败'}"
             # Truncate long output
             display = output[:1500] + "..." if len(output) > 1500 else output
             self.console.print(Panel(display, title=title, border_style=style, expand=False))
         else:
-            status = "PASSED" if success else "FAILED"
-            print(f"  Build: {status}")
+            status = "通过" if success else "失败"
+            print(f"  构建: {status}")
             for line in output.split("\n")[:10]:
                 print(f"    {line}")
     
     def print_final_report(self, total_rounds: int, reports: list):
         """Print final completion report."""
         if self._rich:
-            panel_content = f"Total rounds completed: {total_rounds}\n"
-            panel_content += f"Reports generated: {len(reports)}"
+            panel_content = f"已完成轮数: {total_rounds}\n"
+            panel_content += f"已生成报告: {len(reports)}"
             self.console.print()
             self.console.print(Panel(
                 panel_content,
-                title="🏁 Optimization Complete",
+                title="🏁 优化完成",
                 border_style="bright_green",
                 box=box.DOUBLE,
             ))
         else:
-            print(f"\n🏁 Optimization Complete — {total_rounds} rounds, {len(reports)} reports")
+            print(f"\n🏁 优化完成 — {total_rounds} 轮，{len(reports)} 个报告")
     
     def print_error(self, message: str):
         """Print error message."""

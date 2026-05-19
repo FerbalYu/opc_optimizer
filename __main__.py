@@ -11,6 +11,7 @@ and start the optimization workflow.
 
 Supported CLI Arguments:
     --web-ui               Launch Minecraft-style 3D Web UI in browser
+    --visual               Start the 3D visual companion while CLI remains primary
     --goal GOAL            Set the primary optimization goal
     --max-rounds N         Maximum number of optimization rounds
     --archive-every N      Archive historical data every N rounds

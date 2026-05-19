@@ -72,14 +72,14 @@ def generate_arch_context(
     dir_tree = _walk_top_dirs(project_path, profile)
 
     baseline = (
-        f"# Project Architecture Overview\n"
-        f"- **Type**: {project_type}\n"
-        f"- **Root**: {project_path}\n\n"
-        f"## Top-level Structure\n```\n{dir_tree}\n```\n\n"
-        f"## Architectural Rules\n"
-        f"- Do NOT create files outside the target files listed in the round contract.\n"
-        f"- Do NOT alter build configuration files unless explicitly required.\n"
-        f"- Respect the existing layer separation (View/Store/Service/Utils).\n"
+        f"# 项目架构概览\n"
+        f"- **类型**: {project_type}\n"
+        f"- **根目录**: {project_path}\n\n"
+        f"## 顶层结构\n```\n{dir_tree}\n```\n\n"
+        f"## 架构规则\n"
+        f"- 不要在本轮计划合约列出的目标文件之外创建文件。\n"
+        f"- 除非明确要求，不要修改构建配置文件。\n"
+        f"- 尊重现有分层边界（View/Store/Service/Utils）。\n"
     )
 
     if llm is None:
@@ -90,24 +90,24 @@ def generate_arch_context(
         f"You are an expert software architect reviewing a {project_type} project.\n"
         f"Project root: {project_path}\n\n"
         f"Top-level directory tree:\n```\n{dir_tree}\n```\n\n"
-        f"Write a VERY CONCISE architectural summary (max 400 words) covering:\n"
-        f"1. Bullet list: each significant top-level directory → its role "
+        f"Write a VERY CONCISE architectural summary in Simplified Chinese (max 400 words) covering:\n"
+        f"1. Bullet list in Chinese: each significant top-level directory → its role "
         f"(e.g. `src/` → application source, `tests/` → unit tests).\n"
-        f"2. 3-5 key architectural principles / constraints a developer MUST respect "
+        f"2. 3-5 key architectural principles / constraints in Chinese that a developer MUST respect "
         f"when editing this codebase (e.g. 'All state lives in store/', "
         f"'API calls must go through services/', 'Never import from ui/ in utils/').\n\n"
-        f"Format as clean markdown. Be extremely concise."
+        f"Format as clean markdown. Keep paths and code identifiers unchanged."
     )
 
     try:
         from utils.llm import LLMService
         content = llm.generate([
-            {"role": "system", "content": "You are an expert software architect. Be concise."},
+            {"role": "system", "content": "You are an expert software architect. Use Simplified Chinese for user-visible markdown; keep paths and code identifiers unchanged."},
             {"role": "user", "content": prompt},
         ], temperature=0.1)
         logger.info(f"Arch context generated via LLM ({len(content)} chars).")
         # Prefix the baseline header
-        full = f"# Project Architecture Overview\n- **Type**: {project_type}\n\n{content}"
+        full = f"# 项目架构概览\n- **类型**: {project_type}\n\n{content}"
         return full[:_MAX_CHARS]
     except Exception as exc:
         logger.warning(f"LLM arch context generation failed: {exc}. Using baseline.")

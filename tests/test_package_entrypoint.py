@@ -41,3 +41,4 @@ def test_python_m_opc_optimizer_help_from_parent_directory():
     assert result.returncode == 0, result.stderr
     assert "OPC Local Code Optimizer" in result.stdout
     assert "--web-ui" in result.stdout
+    assert "--visual" in result.stdout

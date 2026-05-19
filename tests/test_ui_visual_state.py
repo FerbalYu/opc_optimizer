@@ -19,6 +19,11 @@ def test_runtime_overview_markup_exists():
     assert 'id="overview-files"' in html
     assert 'id="overview-errors"' in html
     assert 'id="overview-recent"' in html
+    assert "工作流概览" in html
+    assert "CLI 副屏" in html
+    assert "变更文件" in html
+    assert "审核本轮任务" in html
+    assert "暂无活跃任务" in html
 
 
 def test_runtime_overview_styles_exist():
@@ -38,6 +43,7 @@ def test_runtime_overview_event_hooks_exist():
     assert "function setNodeVisualState(nodeName, status)" in html
     assert "function resetNodeVisualState()" in html
     assert "function addOverviewEvent(label, detail = '')" in html
+    assert "const VISUAL_COMPANION = UI_MODE === 'visual'" in html
     assert "setNodeVisualState(data.node, 'running')" in html
     assert "setNodeVisualState(data.node, 'done')" in html
     assert "setNodeVisualState(data.node, 'error')" in html

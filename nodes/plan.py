@@ -12,6 +12,7 @@ from utils.file_ops import (
     rank_files_by_complexity,
 )
 from utils.methodology import PLAN_METHODOLOGY
+from utils.prompt_language import user_visible_language_directive
 
 logger = logging.getLogger("opc.plan")
 
@@ -30,15 +31,15 @@ def _default_round_contract(goal: str, project_files: list[str]) -> dict:
     target_files = project_files[:3]
     return {
         "round_objective": goal,
-        "current_state_assessment": "Fallback contract generated because structured planning failed.",
-        "product_manager_summary": "Auto-generated fallback plan.",
+        "current_state_assessment": "结构化规划失败，已生成兜底计划。",
+        "product_manager_summary": "自动生成的兜底计划。",
         "target_files": target_files,
         "acceptance_checks": [
-            "At least one concrete code change should align with the round objective."
+            "至少有一个具体代码改动应与本轮目标一致。"
         ],
-        "expected_diff": ["Touch the intended logic in the listed target files."],
+        "expected_diff": ["修改目标文件中与本轮目标直接相关的逻辑。"],
         "risk_level": "medium",
-        "fallback_if_blocked": "Reduce scope to the smallest verifiable change in the first target file.",
+        "fallback_if_blocked": "将范围收缩到第一个目标文件中最小且可验证的改动。",
         "impact_score": 5,
         "confidence_score": 5,
         "verification_score": 3,
@@ -142,39 +143,39 @@ def _render_round_contract(contract: dict, current_round: int) -> str:
         else "- (none)"
     )
 
-    return f"""# Round Contract - Round {current_round}
+    return f"""# 第 {current_round} 轮计划合约
 
-## Round Objective
+## 本轮目标
 {contract.get("round_objective", "")}
 
-## Product Manager Summary
+## 产品经理摘要
 {contract.get("product_manager_summary", "Not provided.")}
 
-## Current State Assessment
+## 当前状态评估
 {contract.get("current_state_assessment", "")}
 
-## Target Files
+## 目标文件
 {file_lines}
 
-## Acceptance Checks
+## 验收检查
 {check_lines}
 
-## Expected Diff
+## 预期改动
 {diff_lines}
 
-## Risk Level
+## 风险等级
 {contract.get("risk_level", "medium")}
 
-## Fallback If Blocked
+## 受阻时的兜底方案
 {contract.get("fallback_if_blocked", "")}
 
-## Task Scoring
+## 任务评分
 - impact_score: {contract.get("impact_score", 5)}
 - confidence_score: {contract.get("confidence_score", 5)}
 - verification_score: {contract.get("verification_score", 3)}
 - effort_score: {contract.get("effort_score", 3)}
 
-## Mode Overrides
+## 模式开关
 - Verification-First Mode: {contract.get("verification_first_mode", False)}
 """
 
@@ -503,27 +504,30 @@ def plan_node(state: OptimizerState) -> OptimizerState:
     )
 
     review_feedback = ""
+    language_directive = user_visible_language_directive()
 
     # Check if we have previous suggestions
     if state.get("suggestions"):
         logger.info("Reading previous suggestions to formulate plan...")
         base_prompt = f"""You are the Planning Agent for a code optimization workflow.
-Target Project: {project_path}
-Optimization Goal: {goal}
-Current Round: {current_round}
+目标项目: {project_path}
+优化目标: {goal}
+当前轮次: {current_round}
 {preamble_block}
 
-Project File Structure:
+项目文件结构:
 {file_tree}
 
-Key File Contents:
+关键文件内容:
 {file_previews}
 {history_context}
 {profile_hints}
 {skill_content}
 
-Previous Round Suggestions:
+上一轮建议:
 {state["suggestions"]}
+
+{language_directive}
 
 Based strictly on the suggestions above and the ACTUAL project files, create a structured round contract.
 The contract must reference real file paths and real code structures.
@@ -547,7 +551,8 @@ Rules:
 - target_files must contain 1-3 real relative file paths from this allowlist
 - acceptance_checks must be machine-checkable when possible
 - expected_diff must describe concrete code changes, not vague intent
-- product_manager_summary MUST explain the objective and business value/UX improvement of these changes in plain, non-technical language tailored for a Product Manager. Do not use code terminology.
+- round_objective, current_state_assessment, product_manager_summary, acceptance_checks, expected_diff, and fallback_if_blocked MUST be written in Simplified Chinese unless they quote code, paths, commands, or errors.
+- product_manager_summary MUST explain the objective and business value/UX improvement of these changes in plain, non-technical Simplified Chinese tailored for a Product Manager. Do not use code terminology.
 - VERIFICATION-FIRST MODE: If risk_level is 'high' AND the target code lacks existing tests/verification, you MUST set verification_first_mode to true. When true, your expected_diff must ONLY propose adding tests, assertions, or dry-run scaffolding. Do NOT propose rewriting the actual algorithm yet.
 
 Allowed target files:
@@ -557,19 +562,21 @@ Allowed target files:
     else:
         logger.info("Initial round: Performing full project scan and generating plan.")
         base_prompt = f"""You are the Planning Agent for a code optimization workflow.
-Target Project: {project_path}
-Optimization Goal: {goal}
-Current Round: {current_round} (Initial)
+目标项目: {project_path}
+优化目标: {goal}
+当前轮次: {current_round}（初始轮次）
 {preamble_block}
 
-Project File Structure (sorted by complexity, most complex first):
+项目文件结构（按复杂度排序，最复杂在前）:
 {file_tree}
 
-Key File Contents:
+关键文件内容:
 {file_previews}
 {history_context}
 {profile_hints}
 {skill_content}
+
+{language_directive}
 
 This is the first round. Analyze the ACTUAL project code above and generate a structured round contract.
 Your contract must reference real files and real code patterns you see.
@@ -592,7 +599,8 @@ Rules:
 - target_files must contain 1-3 real relative file paths from this allowlist
 - acceptance_checks must be machine-checkable when possible
 - expected_diff must describe concrete code changes, not vague intent
-- product_manager_summary MUST explain the objective and business value/UX improvement of these changes in plain, non-technical language tailored for a Product Manager. Do not use code terminology.
+- round_objective, current_state_assessment, product_manager_summary, acceptance_checks, expected_diff, and fallback_if_blocked MUST be written in Simplified Chinese unless they quote code, paths, commands, or errors.
+- product_manager_summary MUST explain the objective and business value/UX improvement of these changes in plain, non-technical Simplified Chinese tailored for a Product Manager. Do not use code terminology.
 - VERIFICATION-FIRST MODE: If risk_level is 'high' AND the target code lacks existing tests/verification, you MUST set verification_first_mode to true. When true, your expected_diff must ONLY propose adding tests, assertions, or dry-run scaffolding. Do NOT propose rewriting the actual algorithm yet.
 
 Allowed target files:
@@ -617,7 +625,7 @@ Generate a different batch that better matches the feedback. Do not repeat the p
                 [
                     {
                         "role": "system",
-                        "content": f"You are the Planning Agent for a code optimization workflow. Generate a strict JSON round contract based only on real project code and prior round evidence. NO EXPLANATIONS REQUIRED. Output pure JSON.\n{PLAN_METHODOLOGY}",
+                        "content": f"You are the Planning Agent for a code optimization workflow. Generate a strict JSON round contract based only on real project code and prior round evidence. NO EXPLANATIONS REQUIRED. Output pure JSON. Human-readable JSON string values must use Simplified Chinese unless quoting code, paths, commands, or errors.\n{language_directive}\n{PLAN_METHODOLOGY}",
                     },
                     {"role": "user", "content": prompt},
                 ]

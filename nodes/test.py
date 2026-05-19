@@ -12,6 +12,7 @@ from state import OptimizerState
 from utils.llm import LLMService
 from utils.file_ops import write_to_file
 from utils.methodology import REVIEW_METHODOLOGY
+from utils.prompt_language import user_visible_language_directive
 
 logger = logging.getLogger("opc.test")
 
@@ -762,9 +763,9 @@ def test_node(state: OptimizerState) -> OptimizerState:
             logger.info("No explicit test command configured. Autonomously inferring one...")
             try:
                 infer_llm = _get_llm(state, "execute_model")
-                infer_prompt = f"""Project type: {profile.get('type', 'unknown')}
-Modified files: {modified_files}
-Acceptance checks: {acceptance_checks}
+                infer_prompt = f"""项目类型: {profile.get('type', 'unknown')}
+修改文件: {modified_files}
+验收检查: {acceptance_checks}
 
 Please extract exactly ONE short terminal command (e.g. `npx tsc --noEmit services/ai.ts`, `pytest tests/`, `npm run lint`) from the acceptance checks 
 that can verify these changes. If the checks demand it, write the command.
@@ -953,42 +954,45 @@ replacement lines
     logger.info("Step 2: Spawning Testing Sub-Agent to review code_diff...")
     
     llm = _get_llm(state, "test_model")
+    language_directive = user_visible_language_directive()
     prompt = f"""You are the Testing & Review Agent for a code optimization workflow.
 {preamble_block}
-Target Project: {project_path}
-Primary Objective: {goal}
+目标项目: {project_path}
+主要目标: {goal}
 
-Changes made in this round:
+本轮改动:
 {code_diff}
 
-Real diff evidence from modified files:
+修改文件的真实 diff 证据:
 {diff_evidence}
 
-Test execution output:
+测试执行输出:
 {combined_output}
 
-Structured round contract:
+结构化轮次合约:
 {state.get("round_contract", {})}
 
-Structured round evaluation:
+结构化轮次评估:
 {round_evaluation}
 
+{language_directive}
+
 Based on the real diff evidence first, then the change summary and test results, evaluate if the objective is met, identify any new flaws, and provide extremely specific suggestions for the NEXT round of optimization.
-Format your output as markdown. Write it to function as `优化建议.md`.
+Format your output as markdown in Simplified Chinese. Write it to function as `优化建议.md`.
 
 Your suggestions should include:
-1. Assessment of this round's changes (what worked, what didn't)
-2. Specific issues found (with file paths and line references if possible)
-3. Concrete next-round optimization suggestions ordered by priority
-4. Whether you see signs of diminishing returns (to help decide when to stop)
-5. If `replan_required` is true, start with a short `Replan Required` section that states exactly why this round was low-value or misaligned
-6. If diff evidence is unavailable, say that explicitly instead of pretending to have reviewed the implementation
+1. 本轮改动评估（哪些有效，哪些无效）
+2. 发现的具体问题（尽量包含文件路径和行号）
+3. 下一轮按优先级排序的具体优化建议
+4. 是否出现收益递减迹象（用于决定是否停止）
+5. 如果 `replan_required` 为 true，以 `需要重新规划` 小节开头，并说明本轮为什么低价值或偏离目标
+6. 如果没有 diff 证据，必须明确说明，不能假装已经审查实现
 {REVIEW_METHODOLOGY}
 """
     
     try:
         new_suggestions = llm.generate([
-            {"role": "system", "content": f"You are the Testing & Review Agent. Evaluate code changes based on test results and provide actionable suggestions for the next optimization round. Use markdown format.\n{REVIEW_METHODOLOGY}"},
+            {"role": "system", "content": f"You are the Testing & Review Agent. Evaluate code changes based on test results and provide actionable suggestions for the next optimization round. Use Simplified Chinese markdown for all user-visible text. Keep code, paths, commands, JSON keys, and error excerpts unchanged.\n{language_directive}\n{REVIEW_METHODOLOGY}"},
             {"role": "user", "content": prompt}
         ])
         state["suggestions"] = new_suggestions

@@ -91,31 +91,31 @@ def _generate_final_report(state: OptimizerState) -> None:
     round_evaluation = state.get("round_evaluation", {}) or {}
 
     if current_round >= state.get("max_rounds", 5):
-        stop_reason = "Reached max rounds"
+        stop_reason = "达到最大轮数"
     elif round_evaluation.get("low_value_round"):
-        stop_reason = "Stopped after repeated low-value or misaligned rounds"
+        stop_reason = "因连续低价值或偏离目标的轮次而停止"
     else:
-        stop_reason = "Stopped by user or no-improvement guard"
+        stop_reason = "用户停止或触发无改进保护"
 
-    report = f"""# OPC Final Report
-## Overview
-- Total rounds: {current_round}
-- Optimization goal: {state.get("optimization_goal")}
-- Stop reason: {stop_reason}
+    report = f"""# OPC 最终报告
+## 概览
+- 总轮数: {current_round}
+- 优化目标: {state.get("optimization_goal")}
+- 停止原因: {stop_reason}
 
-## Final Code Diff
-{state.get("code_diff", "No changes")}
+## 最终代码改动
+{state.get("code_diff", "无改动")}
 
-## Final Suggestions
-{state.get("suggestions", "No suggestions")}
+## 最终建议
+{state.get("suggestions", "无建议")}
 
-## Final Round Evaluation
+## 最终轮次评估
 {round_evaluation}
 
-## Final Diff Evidence
-{((state.get("build_result", {}) or {}).get("diff_evidence")) or "No file-level diff evidence available."}
+## 最终 Diff 证据
+{((state.get("build_result", {}) or {}).get("diff_evidence")) or "没有可用的文件级 diff 证据。"}
 
-## Round Reports
+## 轮次报告
 {chr(10).join(f"- {r}" for r in (state.get("round_reports") or []))}
 """
 
@@ -127,7 +127,7 @@ def _generate_final_report(state: OptimizerState) -> None:
     except Exception:
         report_path = os.path.join(project_path, ".opclog", "final_report.md")
     write_to_file(report_path, report)
-    print(f"Final report saved to {report_path}")
+    print(f"最终报告已保存到 {report_path}")
 
 
 def _try_web_ui_interact(state: OptimizerState) -> bool:
@@ -157,6 +157,18 @@ def _try_web_ui_interact(state: OptimizerState) -> bool:
             },
         )
 
+        if os.environ.get("OPC_VISUAL_COMPANION", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            print(
+                f"\n3D 可视化副屏已记录第 {current_round}/{max_rounds} 轮，"
+                "继续由 CLI 接收下一步操作。"
+            )
+            return False
+
         emit(
             "awaiting_input",
             {
@@ -168,13 +180,13 @@ def _try_web_ui_interact(state: OptimizerState) -> bool:
         )
 
         print(
-            f"\nWaiting for input from Web UI (round {current_round}/{max_rounds}, 30s timeout)..."
+            f"\n正在等待 Web UI 输入（第 {current_round}/{max_rounds} 轮，30 秒超时）..."
         )
         # 30 seconds: matches original design — auto-continue if no action taken
         cmd = wait_for_user_command(timeout=30)
 
         if cmd is None:
-            print("Web UI timeout (30s). Auto-continuing to next round...")
+            print("Web UI 30 秒超时，自动继续下一轮...")
             state["should_stop"] = False
             state["current_round"] = current_round + 1
             return True
@@ -183,14 +195,14 @@ def _try_web_ui_interact(state: OptimizerState) -> bool:
 
         if action == "continue":
             state["should_stop"] = False
-            print("Web UI: Continue to next round")
+            print("Web UI：继续下一轮")
         elif action == "stop":
             state["should_stop"] = True
-            print("Web UI: User requested stop")
+            print("Web UI：用户请求停止")
             _generate_final_report(state)
         elif action == "skip":
             state["should_stop"] = False
-            print("Web UI: Skipping current round results")
+            print("Web UI：跳过当前轮结果")
             state["current_round"] = current_round + 1
             return True
         elif action == "rollback":
@@ -204,16 +216,16 @@ def _try_web_ui_interact(state: OptimizerState) -> bool:
                     bak_path = abs_path + ".bak"
                     if os.path.exists(bak_path):
                         _shutil.copy2(bak_path, abs_path)
-                        print(f"  Restored: {filepath}")
+                        print(f"  已恢复: {filepath}")
                 state["modified_files"] = []
-                state["code_diff"] = "Rolled back by user"
+                state["code_diff"] = "用户已回滚"
             state["should_stop"] = False
-            print("Web UI: Rolled back changes")
+            print("Web UI：已回滚改动")
         elif action == "adjust_goal":
             new_goal = _validate_goal(cmd.get("goal", ""))
             if new_goal:
                 state["optimization_goal"] = new_goal
-                print(f"Web UI: Goal updated to: {new_goal}")
+                print(f"Web UI：优化目标已更新为: {new_goal}")
             state["should_stop"] = False
         else:
             state["should_stop"] = False
@@ -300,12 +312,31 @@ def interact_node(state: OptimizerState) -> OptimizerState:
     # ── 注意：绝不提前停止，始终跑满 max_rounds ──
 
     if state.get("auto_mode", False):
+        if os.environ.get("OPC_VISUAL_COMPANION", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            try:
+                from ui.web_server import emit, _clients
+
+                if _clients:
+                    emit(
+                        "round_end",
+                        {
+                            "round": current_round,
+                            "timings": state.get("node_timings", {}) or {},
+                        },
+                    )
+            except ImportError:
+                pass
         if replan_required:
             print(
-                "\nAuto-mode: next round will replan because this round was low-value or misaligned."
+                "\n自动模式：下一轮会重新规划，因为本轮低价值或偏离目标。"
             )
         print(
-            f"\nAuto-mode: Continuing to next round (Round {current_round + 1}/{max_rounds})."
+            f"\n自动模式：继续进入第 {current_round + 1}/{max_rounds} 轮。"
         )
         state["should_stop"] = False
         state["current_round"] = current_round + 1
@@ -314,36 +345,36 @@ def interact_node(state: OptimizerState) -> OptimizerState:
     if _try_web_ui_interact(state):
         return state
 
-    print(f"\nCompleted Round {current_round}/{max_rounds}.")
-    print("Options:")
-    print("  [c] Continue to next round")
-    print("  [s] Stop optimization")
-    print("  [a] Adjust optimization goal")
+    print(f"\n已完成第 {current_round}/{max_rounds} 轮。")
+    print("可选操作:")
+    print("  [c] 继续下一轮")
+    print("  [s] 停止优化")
+    print("  [a] 调整优化目标")
 
     while True:
         try:
-            choice = input("\nAction [c/s/a]: ").strip().lower()
+            choice = input("\n操作 [c/s/a]: ").strip().lower()
 
             if choice == "c" or choice == "":
                 state["should_stop"] = False
                 break
             if choice == "s":
                 state["should_stop"] = True
-                print("User requested to stop the loop.")
+                print("用户请求停止循环。")
                 _generate_final_report(state)
                 break
             if choice == "a":
                 new_goal = _validate_goal(
-                    input("Enter new optimization goal: ").strip()
+                    input("请输入新的优化目标: ").strip()
                 )
                 if new_goal:
                     state["optimization_goal"] = new_goal
-                    print(f"Goal updated to: {new_goal}")
+                    print(f"优化目标已更新为: {new_goal}")
                 state["should_stop"] = False
                 break
-            print("Invalid choice. Please enter 'c', 's', or 'a'.")
+            print("无效选择。请输入 'c'、's' 或 'a'。")
         except EOFError:
-            print("\nNon-interactive environment detected. Auto-continuing...")
+            print("\n检测到非交互环境，自动继续...")
             state["should_stop"] = False
             break
 

@@ -1,15 +1,15 @@
 # Progress
 
-Updated: 2026-05-18T23:50:00+08:00
+Updated: 2026-05-19T09:45:00+08:00
 
 ## Current Plan
-- [x] Record the OPC 5-round trial findings in `docs/OPC_EVAL_FIX_PLAN.md`.
-- [x] Fix and test graph topology and TUI summary API regressions.
-- [x] Tighten environment-error detection.
-- [x] Add explicit validation-mode state and reporting semantics.
-- [x] Protect test files when the goal says tests must remain unchanged.
-- [x] Fix live 5-round regressions found after validation/write-scope fixes.
-- [x] Run focused, broad, and real 5-round verification.
+- [x] Preserve the previous 5-round reliability fixes and Chinese visible
+  language pass.
+- [x] Record the CLI-first 3D visual companion direction in `DESIGN.md`.
+- [x] Add `--visual` as a CLI companion mode.
+- [x] Keep visual companion mode from taking over CLI interaction.
+- [x] Add focused regression coverage.
+- [x] Run focused and full verification.
 
 ## Completed
 - [x] Ran an isolated sample project trial in
@@ -49,6 +49,11 @@ Updated: 2026-05-18T23:50:00+08:00
 - [x] Preserved partial implementation changes when real pytest fails, so later
   rounds can build on useful progress; rollback remains for technical build
   failures.
+- [x] Added `--visual` CLI mode for a Three.js 3D companion window.
+- [x] Added a Web UI `/health` readiness endpoint used by CLI startup.
+- [x] Added "CLI 副屏" visual mode labeling in the Web UI.
+- [x] Added visual companion interaction behavior so WebSocket clients receive
+  round-end events without taking over the CLI prompt.
 
 ## In Progress
 - None.
@@ -76,6 +81,9 @@ Updated: 2026-05-18T23:50:00+08:00
   final original pytest was 8/8 passed; `tests/test_stats_tool.py` had no diff.
   Final report:
   `C:\Users\ecgoi\.opc\.opc_workspace\2a811eb2\reports\final_report.md`.
+- `python -m pytest tests/test_interact_webui.py tests/test_package_entrypoint.py tests/test_ui_visual_state.py tests/test_web_server.py tests/test_main_webui_ports.py -q`: 34 passed.
+- `python -m pytest -q`: 562 passed.
+- `git diff --check`: passed, with CRLF normalization warnings only.
 
 ## Review Notes
 - `utils.static_validator.is_env_error()` is now intentionally narrower; missing
@@ -99,6 +107,8 @@ Updated: 2026-05-18T23:50:00+08:00
   `.opclog`, `__pycache__`, and `.bak` artifacts.
 - Align CLI stop-reason summary with final report wording when max rounds are
   reached.
+- Extend the 3D scene after the CLI contract is stable: round orbit, file-change
+  wall, and final before/after settlement screen.
 
 ## Decisions Since DESIGN.md
 - Use a limited refactor: helper functions and structured fields first; no
