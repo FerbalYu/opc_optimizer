@@ -43,6 +43,7 @@ def test_runtime_overview_styles_exist():
     assert ".file-wall" in html
     assert ".value-curve" in html
     assert ".prompt-check" in html
+    assert "insight-3d-layer" in html
 
 
 def test_runtime_overview_event_hooks_exist():
@@ -54,8 +55,11 @@ def test_runtime_overview_event_hooks_exist():
     assert "function addOverviewEvent(label, detail = '')" in html
     assert "function upsertRoundInsight(insight)" in html
     assert "function renderInsights()" in html
+    assert "function renderInsight3D(insight)" in html
+    assert "function clearInsight3D()" in html
     assert "const VISUAL_COMPANION = UI_MODE === 'visual'" in html
     assert "case 'round_insight':" in html
+    assert "renderInsight3D(roundInsights[roundInsights.length - 1])" in html
     assert "setNodeVisualState(data.node, 'running')" in html
     assert "setNodeVisualState(data.node, 'done')" in html
     assert "setNodeVisualState(data.node, 'error')" in html

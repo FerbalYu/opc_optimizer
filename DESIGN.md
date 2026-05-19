@@ -154,3 +154,9 @@ iterations can map the same data into richer 3D objects.
 - [x] The 3D monitor exposes a Chinese "洞察" tab for these fields.
 - [x] Focused and full regression tests cover the insight utility and static UI
   hooks.
+
+## Visual Insight V2 Acceptance Criteria
+- [x] The latest round insight also renders into the Three.js scene.
+- [x] Health score appears as a 3D beacon near the report area.
+- [x] The last five round scores appear as 3D value bars.
+- [x] Changed files appear as colored 3D bricks by file category.

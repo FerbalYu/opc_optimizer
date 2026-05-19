@@ -1,6 +1,6 @@
 # Progress
 
-Updated: 2026-05-20T09:20:00+08:00
+Updated: 2026-05-20T10:10:00+08:00
 
 ## Current Plan
 - [x] Preserve the previous 5-round reliability fixes and Chinese visible
@@ -12,6 +12,7 @@ Updated: 2026-05-20T09:20:00+08:00
 - [x] Run focused and full verification.
 - [x] Add the selected visual insight slice: value curve, file wall, prompt
   microscope, health score, and next actions.
+- [x] Add visual insight v2: map round insights into the Three.js scene.
 
 ## Completed
 - [x] Ran an isolated sample project trial in
@@ -60,6 +61,8 @@ Updated: 2026-05-20T09:20:00+08:00
   companion insight events.
 - [x] Added a Web UI "洞察" tab with five-round value curve, file wall, prompt
   microscope, health score, and next-action chips.
+- [x] Added a 3D insight layer with health beacon, five-round value bars, and
+  file-change bricks.
 
 ## In Progress
 - None.
