@@ -19,8 +19,14 @@ def test_runtime_overview_markup_exists():
     assert 'id="overview-files"' in html
     assert 'id="overview-errors"' in html
     assert 'id="overview-recent"' in html
+    assert 'id="tab-insights"' in html
+    assert 'id="insight-panel"' in html
     assert "工作流概览" in html
     assert "CLI 副屏" in html
+    assert "五轮收益曲线" in html
+    assert "文件改动墙" in html
+    assert "提示词显微镜" in html
+    assert "下一步建议" in html
     assert "变更文件" in html
     assert "审核本轮任务" in html
     assert "暂无活跃任务" in html
@@ -34,6 +40,9 @@ def test_runtime_overview_styles_exist():
     assert ".node-state-cell.done" in html
     assert ".node-state-cell.error" in html
     assert ".overview-risk.error" in html
+    assert ".file-wall" in html
+    assert ".value-curve" in html
+    assert ".prompt-check" in html
 
 
 def test_runtime_overview_event_hooks_exist():
@@ -43,7 +52,10 @@ def test_runtime_overview_event_hooks_exist():
     assert "function setNodeVisualState(nodeName, status)" in html
     assert "function resetNodeVisualState()" in html
     assert "function addOverviewEvent(label, detail = '')" in html
+    assert "function upsertRoundInsight(insight)" in html
+    assert "function renderInsights()" in html
     assert "const VISUAL_COMPANION = UI_MODE === 'visual'" in html
+    assert "case 'round_insight':" in html
     assert "setNodeVisualState(data.node, 'running')" in html
     assert "setNodeVisualState(data.node, 'done')" in html
     assert "setNodeVisualState(data.node, 'error')" in html

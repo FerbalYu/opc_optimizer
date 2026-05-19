@@ -471,6 +471,75 @@ body {
 .round-card-header:hover { background: rgba(88,166,255,0.08); }
 @keyframes slideDown { from { max-height: 0; opacity: 0; } to { max-height: 200px; opacity: 1; } }
 
+/* ─── Insight Tab ─── */
+#insight-panel { padding: 12px; overflow-y: auto; }
+.insight-empty { padding: 24px 12px; text-align: center; color: var(--text-secondary); font-size: 12px; }
+.insight-hero {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-card);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.insight-score-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.insight-score { font-size: 34px; font-weight: 800; color: var(--accent-green); line-height: 1; }
+.insight-label { font-size: 13px; color: var(--text-primary); font-weight: 700; }
+.insight-reasons { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.insight-reason { font-size: 11px; color: var(--text-secondary); }
+.insight-section {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: rgba(22,27,34,0.7);
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.insight-section h5 { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; }
+.value-curve { display: flex; align-items: end; gap: 6px; height: 64px; }
+.value-bar {
+  flex: 1;
+  min-width: 22px;
+  border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(180deg, var(--accent-green), rgba(63,185,80,0.38));
+  position: relative;
+}
+.value-bar span {
+  position: absolute;
+  bottom: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+.file-wall { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.file-brick {
+  min-height: 38px;
+  border-radius: 6px;
+  padding: 6px;
+  font-size: 10px;
+  color: #fff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.file-brick small { opacity: 0.78; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prompt-check { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(139,148,158,0.12); }
+.prompt-check:last-child { border-bottom: none; }
+.prompt-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; background: var(--accent-green); flex: 0 0 auto; }
+.prompt-dot.warn { background: var(--accent-orange); }
+.prompt-dot.watch { background: var(--accent-blue); }
+.prompt-check strong { font-size: 11px; color: var(--text-primary); }
+.prompt-check div div { font-size: 10px; color: var(--text-secondary); line-height: 1.5; }
+.action-chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.action-chip {
+  border: 1px solid rgba(88,166,255,0.35);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--accent-blue);
+  background: rgba(88,166,255,0.1);
+  font-size: 10px;
+}
+
 /* ─── Stats Chart Tab (v2.3.0) ─── */
 #stats-chart-panel { padding: 12px; }
 #stats-chart-panel canvas { width: 100% !important; max-height: 180px; }
@@ -801,6 +870,7 @@ body {
       <button class="tab-btn active" data-tab="tab-logs">📋 日志</button>
       <button class="tab-btn" data-tab="tab-diff">📝 Diff</button>
       <button class="tab-btn" data-tab="tab-rounds">📊 轮次</button>
+      <button class="tab-btn" data-tab="tab-insights">💡 洞察</button>
       <button class="tab-btn" data-tab="tab-stats">📈 统计</button>
       <button class="tab-btn" data-tab="tab-trace">🔍 Trace</button>
       <button class="tab-btn" data-tab="tab-config">⚙️ 配置</button>
@@ -831,6 +901,13 @@ body {
     <div class="tab-content" id="tab-rounds">
       <div id="rounds-list">
         <div class="rounds-empty">暂无轮次数据。完成一轮后将在此显示对比。</div>
+      </div>
+    </div>
+
+    <!-- Tab: Round Insights -->
+    <div class="tab-content" id="tab-insights">
+      <div id="insight-panel">
+        <div class="insight-empty">暂无轮次洞察。完成一轮后将显示收益曲线、文件墙、提示词显微镜和下一步建议。</div>
       </div>
     </div>
 
@@ -1705,6 +1782,7 @@ function escHtml(s) {
 const roundsList = document.getElementById('rounds-list');
 const roundData = []; // {round, nodesCompleted, elapsed, timings, diffsCount}
 const roundDetailStore = {}; // round -> {plan_summary, diff_summary, suggestions, files_changed}
+const roundInsights = [];
 
 function addRoundData(round, data) {
   roundData.push({ round, ...data });
@@ -1772,6 +1850,79 @@ window.toggleRoundDetail = function(round) {
   const el = document.getElementById(`detail-${round}`);
   if (el) el.classList.toggle('open');
 };
+
+function upsertRoundInsight(insight) {
+  if (!insight || !insight.round) return;
+  const idx = roundInsights.findIndex(item => item.round === insight.round);
+  if (idx >= 0) {
+    roundInsights[idx] = insight;
+  } else {
+    roundInsights.push(insight);
+  }
+  roundInsights.sort((a, b) => Number(a.round) - Number(b.round));
+  renderInsights();
+}
+
+function renderInsights() {
+  const panel = document.getElementById('insight-panel');
+  if (!panel) return;
+  if (!roundInsights.length) {
+    panel.innerHTML = '<div class="insight-empty">暂无轮次洞察。完成一轮后将显示收益曲线、文件墙、提示词显微镜和下一步建议。</div>';
+    return;
+  }
+  const latest = roundInsights[roundInsights.length - 1];
+  const bars = roundInsights.map(item => {
+    const score = Math.max(0, Math.min(10, Number(item.health_score || 0)));
+    return `<div class="value-bar" title="第 ${item.round} 轮：${score}/10" style="height:${Math.max(8, score * 6)}px"><span>${item.round}</span></div>`;
+  }).join('');
+  const fileWall = (latest.file_wall?.files || []).slice(0, 12).map(file => `
+    <div class="file-brick" style="background:${escHtml(file.color || '#8b949e')}; min-height:${32 + Number(file.weight || 1) * 4}px" title="${escHtml(file.path)}">
+      <strong>${escHtml(file.label || file.category || '文件')}</strong>
+      <small>${escHtml(file.path || '')}</small>
+    </div>
+  `).join('') || '<div class="insight-reason">本轮没有文件改动。</div>';
+  const promptChecks = (latest.prompt_microscope || []).map(item => `
+    <div class="prompt-check">
+      <span class="prompt-dot ${escHtml(item.status || '')}"></span>
+      <div><strong>${escHtml(item.name)}</strong><div>${escHtml(item.detail)}</div></div>
+    </div>
+  `).join('');
+  const actions = (latest.next_actions || []).map(action =>
+    `<span class="action-chip">${escHtml(action.label)}</span>`
+  ).join('');
+  const reasons = (latest.health_reasons || []).map(reason =>
+    `<div class="insight-reason">• ${escHtml(reason)}</div>`
+  ).join('');
+
+  panel.innerHTML = `
+    <div class="insight-hero">
+      <div class="insight-score-row">
+        <div>
+          <div class="insight-label">第 ${escHtml(latest.round)} 轮健康分</div>
+          <div class="insight-reasons">${reasons || '<div class="insight-reason">暂无风险原因。</div>'}</div>
+        </div>
+        <div class="insight-score">${escHtml(latest.health_score)}/10</div>
+      </div>
+      <div class="insight-label" style="margin-top:8px;">收益判断：${escHtml(latest.value_label || '待判断')}</div>
+    </div>
+    <div class="insight-section">
+      <h5>📈 五轮收益曲线</h5>
+      <div class="value-curve">${bars}</div>
+    </div>
+    <div class="insight-section">
+      <h5>🧱 文件改动墙</h5>
+      <div class="file-wall">${fileWall}</div>
+    </div>
+    <div class="insight-section">
+      <h5>🔬 提示词显微镜</h5>
+      ${promptChecks}
+    </div>
+    <div class="insight-section">
+      <h5>➡️ 下一步建议</h5>
+      <div class="action-chip-list">${actions || '<span class="action-chip">继续观察</span>'}</div>
+    </div>
+  `;
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  CHART.JS STATS (v2.3.0)
@@ -2469,6 +2620,7 @@ function handleEvent(msg) {
       // Store detail for expandable round cards (v2.3.0)
       if (data.round) {
         roundDetailStore[data.round] = data;
+        if (data.insight) upsertRoundInsight(data.insight);
         renderRounds(); // Re-render to include new detail
         // Flash the rounds tab
         const rTab = document.querySelector('[data-tab="tab-rounds"]');
@@ -2477,10 +2629,18 @@ function handleEvent(msg) {
       }
       break;
 
+    case 'round_insight':
+      upsertRoundInsight(data);
+      addLog(`💡 第 ${data.round || '?'} 轮洞察已更新：${data.value_label || '待判断'}`, 'info');
+      break;
+
     case 'full_history':
       // Bulk load round details (v2.3.0)
       if (data.rounds) {
-        data.rounds.forEach(r => { if (r.round) roundDetailStore[r.round] = r; });
+        data.rounds.forEach(r => {
+          if (r.round) roundDetailStore[r.round] = r;
+          if (r.insight) upsertRoundInsight(r.insight);
+        });
         renderRounds();
         addLog(`📜 加载了 ${data.rounds.length} 轮历史详情`, 'info');
       }

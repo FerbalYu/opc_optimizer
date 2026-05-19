@@ -181,6 +181,9 @@ def report_node(state: OptimizerState) -> OptimizerState:
 
     try:
         from ui.web_server import emit
+        from utils.visual_insights import build_round_insight
+
+        round_insight = build_round_insight(state, round_metrics)
         emit("round_history_update", {
             "round": current_round,
             "plan_summary": (state.get("current_plan", "") or "")[:500],
@@ -189,7 +192,9 @@ def report_node(state: OptimizerState) -> OptimizerState:
             "files_changed": list(state.get("modified_files", []) or []),
             "timings": state.get("node_timings", {}),
             "evaluation": round_evaluation,
+            "insight": round_insight,
         })
+        emit("round_insight", round_insight)
         # Emit metrics for Web UI dashboard trend chart
         if round_metrics:
             emit("metrics_update", {"round": current_round, "metrics": round_metrics})

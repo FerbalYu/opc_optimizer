@@ -140,3 +140,17 @@ outcome.
 - [x] The monitor shows a Chinese "CLI 副屏" mode indicator.
 - [x] Focused tests cover the new CLI flag, visual-only interaction behavior,
   static UI marker, and Web UI readiness endpoint.
+
+## Visual Insight Direction
+The selected next ideas are: five-round value curve, file-change wall, prompt
+microscope, round health score, and next-step suggestions. The first slice keeps
+these as structured report events and a Chinese Web UI insight panel; later
+iterations can map the same data into richer 3D objects.
+
+## Visual Insight Acceptance Criteria
+- [x] Each report round can build a structured `round_insight` payload.
+- [x] The payload includes health score, value label, value curve point,
+  file-wall classification, prompt-microscope checks, and next actions.
+- [x] The 3D monitor exposes a Chinese "洞察" tab for these fields.
+- [x] Focused and full regression tests cover the insight utility and static UI
+  hooks.

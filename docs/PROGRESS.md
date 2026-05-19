@@ -1,6 +1,6 @@
 # Progress
 
-Updated: 2026-05-19T09:45:00+08:00
+Updated: 2026-05-20T09:20:00+08:00
 
 ## Current Plan
 - [x] Preserve the previous 5-round reliability fixes and Chinese visible
@@ -10,6 +10,8 @@ Updated: 2026-05-19T09:45:00+08:00
 - [x] Keep visual companion mode from taking over CLI interaction.
 - [x] Add focused regression coverage.
 - [x] Run focused and full verification.
+- [x] Add the selected visual insight slice: value curve, file wall, prompt
+  microscope, health score, and next actions.
 
 ## Completed
 - [x] Ran an isolated sample project trial in
@@ -54,6 +56,10 @@ Updated: 2026-05-19T09:45:00+08:00
 - [x] Added "CLI 副屏" visual mode labeling in the Web UI.
 - [x] Added visual companion interaction behavior so WebSocket clients receive
   round-end events without taking over the CLI prompt.
+- [x] Added `utils.visual_insights.build_round_insight()` for structured visual
+  companion insight events.
+- [x] Added a Web UI "洞察" tab with five-round value curve, file wall, prompt
+  microscope, health score, and next-action chips.
 
 ## In Progress
 - None.
@@ -83,6 +89,9 @@ Updated: 2026-05-19T09:45:00+08:00
   `C:\Users\ecgoi\.opc\.opc_workspace\2a811eb2\reports\final_report.md`.
 - `python -m pytest tests/test_interact_webui.py tests/test_package_entrypoint.py tests/test_ui_visual_state.py tests/test_web_server.py tests/test_main_webui_ports.py -q`: 34 passed.
 - `python -m pytest -q`: 562 passed.
+- `git diff --check`: passed, with CRLF normalization warnings only.
+- `python -m pytest tests/test_visual_insights.py tests/test_ui_visual_state.py tests/test_step6_features.py tests/test_prompt_language.py -q`: 25 passed.
+- `python -m pytest -q`: 565 passed.
 - `git diff --check`: passed, with CRLF normalization warnings only.
 
 ## Review Notes
