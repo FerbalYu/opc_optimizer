@@ -951,7 +951,13 @@ If no safe change is possible, return exactly: NO_CHANGES
                 state["execution_errors"] = errors
             else:
                 logger.warning("No modifications parsed from LLM output")
-                state["code_diff"] = "No changes parsed from LLM output."
+                if "NO_CHANGES" in raw_response:
+                    state["code_diff"] = "No safe changes proposed by LLM."
+                else:
+                    state["code_diff"] = "No changes parsed from LLM output."
+                    errors = state.get("execution_errors", []) or []
+                    errors.append("LLM output contained no parseable modifications")
+                    state["execution_errors"] = errors
             return state
 
         diff_summary = []

@@ -112,6 +112,35 @@ class TestTokenCostTracking:
         sig = inspect.signature(LLMService.__init__)
         assert sig.parameters["model_name"].default == "MiniMax-M3"
 
+    def test_default_retry_count_is_one(self):
+        llm = LLMService(model_name="__test_bypass__")
+        assert llm.max_retries == 1
+
+    def test_litellm_receives_request_timeout(self):
+        class Message:
+            content = "ok"
+
+        class Choice:
+            message = Message()
+
+        class Response:
+            choices = [Choice()]
+            usage = None
+
+        captured = {}
+
+        def fake_completion(**kwargs):
+            captured.update(kwargs)
+            return Response()
+
+        LLMService._env_cache.pop("LLM_TIMEOUT", None)
+        llm = LLMService(model_name="__test_bypass__", timeout=7)
+        with patch("utils.llm.litellm.completion", side_effect=fake_completion):
+            assert llm.generate([{"role": "user", "content": "hi"}]) == "ok"
+
+        assert captured["timeout"] == 7
+        assert captured["request_timeout"] == 7
+
     def test_pricing_table_has_entries(self):
         assert len(LLMService.MODEL_PRICING) >= 10
 

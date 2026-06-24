@@ -921,11 +921,12 @@ Do not output markdown, explanations, or quotes. Only the raw command string."""
     # If build failed, attempt LLM-driven fix before giving up
     max_self_repair = int(os.environ.get("OPC_MAX_SELF_REPAIR", "2"))
     modified_files = state.get("modified_files", []) or []
-    build_needs_self_repair = (
-        not build_result.get("passed", False)
-        and not build_result.get("skipped", False)
+    needs_self_repair = (
+        not build_passed
+        and validation_mode != "static_fallback"
+        and not is_env_error(combined_output)
     )
-    if build_needs_self_repair and modified_files and max_self_repair > 0:
+    if needs_self_repair and modified_files and max_self_repair > 0:
         repair_llm = _get_llm(state, "execute_model")
         feedback = ""
         for attempt in range(1, max_self_repair + 1):
@@ -939,8 +940,8 @@ Do not output markdown, explanations, or quotes. Only the raw command string."""
 Modified files: {modified_files}
 Project path: {project_path}
 
-Analyze the error and generate a SEARCH/REPLACE fix for the specific issue.
-Only fix the build/syntax/import error — do NOT change logic or architecture.
+Analyze the error and generate the smallest SEARCH/REPLACE fix for the specific failing check.
+Only edit the already modified files. Do NOT change tests or broaden the original change.
 Return ONLY one or more SEARCH/REPLACE blocks in this format:
 
 <relative_path>
@@ -954,7 +955,7 @@ replacement lines
                     repair_prompt += f"\n\n{feedback}"
 
                 repair_response = repair_llm.generate([
-                    {"role": "system", "content": "You are a crash-repair agent. Fix only build errors, syntax errors, or import errors. Be minimal and precise. NO EXPLANATIONS REQUIRED. Output valid SEARCH/REPLACE blocks ONLY."},
+                    {"role": "system", "content": "You are a verification-repair agent. Fix only the specific build/test failure caused by the last patch. Be minimal and precise. NO EXPLANATIONS REQUIRED. Output valid SEARCH/REPLACE blocks ONLY."},
                     {"role": "user", "content": repair_prompt}
                 ])
                 # Apply repair patches using existing diff parser

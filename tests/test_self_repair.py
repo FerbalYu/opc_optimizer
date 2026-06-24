@@ -299,3 +299,67 @@ class TestSelfRepairPatches:
         assert result["modified_files"] == []
         assert result["build_result"]["test_passed"] is False
         assert result["build_result"]["rolled_back"] is True
+
+    def test_test_failure_can_self_repair_modified_file(self, tmp_project, monkeypatch):
+        monkeypatch.setenv("OPC_MAX_SELF_REPAIR", "1")
+        main_py = tmp_project / "main.py"
+        main_py.write_text("def hello():\n    return 'bad'\n", encoding="utf-8")
+
+        class FakeRepairLLM:
+            def generate(self, _messages):
+                return "\n".join([
+                    "main.py",
+                    "<<<<<<< SEARCH",
+                    "    return 'bad'",
+                    "=======",
+                    "    return 'fixed'",
+                    ">>>>>>> REPLACE",
+                ])
+
+        class FakeReviewLLM:
+            def generate(self, _messages):
+                return "测试失败已由最小补丁修复。"
+
+        state = _make_state(
+            tmp_project,
+            modified_files=["main.py"],
+            code_diff="MODIFIED main.py",
+            round_contract={
+                "target_files": ["main.py"],
+                "acceptance_checks": ["python -m pytest -q passes"],
+                "expected_diff": ["main.py returns fixed"],
+            },
+        )
+
+        with patch(
+            "utils.project_profile.load_project_profile",
+            return_value={
+                "type": "python",
+                "build_cmd": "python -m py_compile main.py",
+                "test_cmd": "python -m pytest -q",
+            },
+        ), patch(
+            "nodes.test._detect_and_run_build",
+            return_value="[build] exit_code=0\nok",
+        ), patch(
+            "nodes.test._run_build_check",
+            return_value={"passed": True, "output": "[build] exit_code=0\nok", "skipped": False},
+        ), patch(
+            "nodes.test._run_test_check",
+            side_effect=[
+                {"passed": False, "output": "[test] exit_code=1\nAssertionError", "skipped": False},
+                {"passed": True, "output": "[test] exit_code=0\n1 passed", "skipped": False},
+            ],
+        ), patch(
+            "nodes.test._run_ui_check",
+            return_value={"passed": True, "output": "UI verification disabled - skipped.", "skipped": True},
+        ), patch(
+            "nodes.test._get_llm",
+            side_effect=[FakeRepairLLM(), FakeReviewLLM()],
+        ):
+            result = run_test_node(state)
+
+        assert "return 'fixed'" in main_py.read_text(encoding="utf-8")
+        assert result["build_result"]["build_passed"] is True
+        assert result["build_result"]["test_passed"] is True
+        assert result["build_result"]["rolled_back"] is False

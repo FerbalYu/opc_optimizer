@@ -139,6 +139,7 @@ class TestExecuteNodeWorkflow:
 
         state = _make_state(
             tmp_project,
+            current_plan="Modify main.py",
             round_contract={
                 "target_files": ["main.py"],
                 "acceptance_checks": ["main.py should have docstrings."],
@@ -183,6 +184,28 @@ class TestExecuteNodeWorkflow:
 
         current_content = (tmp_project / "main.py").read_text(encoding="utf-8")
         assert current_content == original_content
+
+    @patch("nodes.execute.LLMService")
+    def test_execute_records_unparseable_llm_output_as_error(self, MockLLM, tmp_project):
+        mock_instance = MockLLMService(text_response="I would improve main.py by adding comments.")
+        MockLLM.return_value = mock_instance
+        MockLLM.truncate_to_budget = staticmethod(lambda text, budget, label="": text)
+        MockLLM.estimate_tokens = staticmethod(lambda text: len(text) // 4)
+
+        from nodes.execute import execute_node
+
+        state = _make_state(
+            tmp_project,
+            current_plan="Modify main.py",
+            round_contract={
+                "target_files": ["main.py"],
+                "acceptance_checks": ["main.py should be modified."],
+            },
+        )
+        result = execute_node(state)
+
+        assert result["code_diff"] == "No changes parsed from LLM output."
+        assert "LLM output contained no parseable modifications" in result["execution_errors"]
 
 
 class TestWorkflowIntegration:
