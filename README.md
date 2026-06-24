@@ -143,6 +143,8 @@ python main.py --web-ui
 
 # 启动 Desktop 版（PySide6 + QWebEngineView + QWebChannel）
 python main.py --desktop
+python main.py --desktop --desktop-devtools
+python main.py --desktop --desktop-log D:\temp\opc-desktop.jsonl
 
 # 指定端口
 python main.py --web-ui --http-port 8765
@@ -178,6 +180,8 @@ python main.py D:\your-project --goal "优化" --no-format    # 禁用自动格�
 | `--timeout` | `120` | LLM 调用超时（秒）|
 | `--web-ui` | false | 启动 Web UI 看板 |
 | `--desktop` | false | 启动 PySide6 Desktop 版窗口 |
+| `--desktop-devtools` | false | Open Chromium DevTools for Desktop WebView debugging |
+| `--desktop-log` | `.opclog/desktop.jsonl` | Write Desktop bridge/runtime events to a JSONL debug log |
 | `--http-port` | `8765` | Web UI HTTP 端口（WS 端口 = HTTP + 1）|
 | `--formatter` | 自动检测 | 显式指定格式化命令 |
 | `--no-format` | false | 禁用写入后自动格式化 |

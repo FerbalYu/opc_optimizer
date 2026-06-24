@@ -2,6 +2,7 @@
 
 import json
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -77,3 +78,42 @@ def test_forward_event_emits_qwebchannel_payload():
 
     payload = json.loads(captured[0])
     assert payload == {"type": "node_start", "data": {"node": "plan", "round": 1}}
+
+
+def test_desktop_log_defaults_to_project_opclog(tmp_path):
+    done = threading.Event()
+
+    def runner(config):
+        done.set()
+        return {"status": "ok"}
+
+    bridge = DesktopBridge(_args(), runner=runner)
+    response = json.loads(bridge.startRun(json.dumps({"project_path": str(tmp_path)})))
+
+    assert response["ok"] is True
+    assert done.wait(2)
+
+    log_path = tmp_path / ".opclog" / "desktop.jsonl"
+    deadline = time.time() + 2
+    while time.time() < deadline:
+        if log_path.exists() and len(log_path.read_text(encoding="utf-8").splitlines()) >= 3:
+            break
+        time.sleep(0.05)
+    records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    assert [record["kind"] for record in records] == [
+        "start_run",
+        "event",
+        "run_state",
+    ]
+    assert records[1]["payload"]["type"] == "optimization_complete"
+
+
+def test_desktop_log_can_use_cli_path(tmp_path):
+    log_path = tmp_path / "desktop-debug.jsonl"
+    bridge = DesktopBridge(_args(desktop_log=str(log_path)))
+
+    bridge.forwardEvent("node_start", {"node": "plan"})
+
+    record = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["kind"] == "event"
+    assert record["payload"]["type"] == "node_start"

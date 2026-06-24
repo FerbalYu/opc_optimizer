@@ -311,6 +311,17 @@ def parse_args():
         help="Launch the PySide6 desktop app",
     )
     parser.add_argument(
+        "--desktop-devtools",
+        action="store_true",
+        help="Open Chromium DevTools for the PySide6 desktop WebView",
+    )
+    parser.add_argument(
+        "--desktop-log",
+        type=str,
+        default=None,
+        help="Write desktop debug events to this JSONL file",
+    )
+    parser.add_argument(
         "--visual",
         action="store_true",
         help="启动 CLI 3D 可视化副屏，CLI 仍作为主控入口",

@@ -38,10 +38,17 @@ class DesktopMainWindow(QMainWindow):
         self.web_view.setUrl(QUrl.fromLocalFile(desktop_index_path()))
         self.setCentralWidget(self.web_view)
 
+        self.devtools_view: QWebEngineView | None = None
+        if getattr(run_args, "desktop_devtools", False):
+            self.devtools_view = QWebEngineView()
+            self.devtools_view.setWindowTitle("OPC Desktop DevTools")
+            self.devtools_view.resize(1100, 760)
+            self.web_view.page().setDevToolsPage(self.devtools_view.page())
+            self.devtools_view.show()
+
 
 def run_desktop_app(run_args: Any) -> int:
     app = QApplication.instance() or QApplication(sys.argv[:1])
     window = DesktopMainWindow(run_args)
     window.show()
     return int(app.exec())
-

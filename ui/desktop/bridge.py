@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, Callable
 
@@ -81,6 +82,7 @@ class DesktopBridge(QObject):
         self._runner = runner
         self._thread: threading.Thread | None = None
         self._last_result: dict[str, Any] = {}
+        self._log_path = getattr(initial_args, "desktop_log", None)
 
     @Slot(result=str)
     def initialConfig(self) -> str:
@@ -116,6 +118,8 @@ class DesktopBridge(QObject):
         if not project_path or not os.path.isdir(project_path):
             return _json_response(False, error="project_path_not_found")
         config["project_path"] = project_path
+        self._ensure_log_path(project_path)
+        self._write_log("start_run", {"config": config})
 
         self._thread = threading.Thread(
             target=self._run_optimizer, args=(config,), daemon=True, name="opc-desktop-run"
@@ -137,6 +141,7 @@ class DesktopBridge(QObject):
         from ..web_server import submit_user_command
 
         submit_user_command(command)
+        self._write_log("command", command)
         self.forwardEvent("command_received", {"action": command.get("action")})
         return _json_response(True, command=command)
 
@@ -149,9 +154,30 @@ class DesktopBridge(QObject):
         return _json_response(True, result=self._last_result)
 
     def forwardEvent(self, event_type: str, data: dict[str, Any] | None = None) -> None:
+        self._write_log("event", {"type": event_type, "data": data or {}})
         self.eventReceived.emit(
             json.dumps({"type": event_type, "data": data or {}}, ensure_ascii=False)
         )
+
+    def _ensure_log_path(self, project_path: str) -> None:
+        if self._log_path:
+            return
+        self._log_path = os.path.join(project_path, ".opclog", "desktop.jsonl")
+
+    def _write_log(self, kind: str, payload: dict[str, Any]) -> None:
+        if not self._log_path:
+            return
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(self._log_path)), exist_ok=True)
+            record = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "kind": kind,
+                "payload": payload,
+            }
+            with open(self._log_path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        except OSError:
+            pass
 
     def _run_optimizer(self, config: dict[str, Any]) -> None:
         if self._runner is not None:
@@ -159,9 +185,11 @@ class DesktopBridge(QObject):
                 self._last_result = self._runner(config)
                 self.forwardEvent("optimization_complete", self._last_result)
                 self.runStateChanged.emit(_json_response(True, state="complete"))
+                self._write_log("run_state", {"state": "complete"})
             except Exception as exc:
                 self.forwardEvent("desktop_error", {"error": str(exc)})
                 self.runStateChanged.emit(_json_response(False, state="error", error=str(exc)))
+                self._write_log("run_state", {"state": "error", "error": str(exc)})
             return
 
         from ...graph import create_optimizer_graph
@@ -211,9 +239,10 @@ class DesktopBridge(QObject):
             self._last_result = dict(result)
             self.forwardEvent("optimization_complete", self._last_result)
             self.runStateChanged.emit(_json_response(True, state="complete"))
+            self._write_log("run_state", {"state": "complete"})
         except Exception as exc:
             self.forwardEvent("desktop_error", {"error": str(exc)})
             self.runStateChanged.emit(_json_response(False, state="error", error=str(exc)))
+            self._write_log("run_state", {"state": "error", "error": str(exc)})
         finally:
             remove_event_sink(self.forwardEvent)
-

@@ -42,4 +42,6 @@ def test_python_m_opc_optimizer_help_from_parent_directory():
     assert "OPC Local Code Optimizer" in result.stdout
     assert "--web-ui" in result.stdout
     assert "--desktop" in result.stdout
+    assert "--desktop-devtools" in result.stdout
+    assert "--desktop-log" in result.stdout
     assert "--visual" in result.stdout
