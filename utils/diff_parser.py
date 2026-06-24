@@ -93,6 +93,7 @@ def parse_search_replace(text: str) -> List[Dict[str, str]]:
         List of modification dicts with keys:
         filepath, old_content_snippet, new_content, reason
     """
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     modifications = []
     
     # Find all SEARCH/REPLACE blocks
@@ -124,6 +125,7 @@ def parse_json_fallback(text: str) -> List[Dict[str, str]]:
     Tries to extract a JSON object with a 'modifications' key from the text.
     """
     import json
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     
     # Try to find JSON in the text
     # Look for ```json ... ``` blocks first

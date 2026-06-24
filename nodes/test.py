@@ -652,6 +652,18 @@ def _apply_self_repair_patches(
     return applied_count
 
 
+def _rollback_modified_files(project_path: str, modified_files: List[str]) -> List[str]:
+    restored = []
+    for filepath in modified_files:
+        abs_path = os.path.join(project_path, filepath)
+        bak_path = abs_path + ".bak"
+        if os.path.exists(bak_path):
+            shutil.copy2(bak_path, abs_path)
+            restored.append(filepath)
+            logger.info(f"  鈫╋笍 Restored: {filepath}")
+    return restored
+
+
 def _run_ui_check(project_path: str, profile: dict, timeout: int = 60, round_num: int = 1) -> dict:
     """Run frontend UI verification with a local dev server + Playwright."""
     enabled = os.environ.get("OPC_ENABLE_UI_CHECK", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -909,7 +921,11 @@ Do not output markdown, explanations, or quotes. Only the raw command string."""
     # If build failed, attempt LLM-driven fix before giving up
     max_self_repair = int(os.environ.get("OPC_MAX_SELF_REPAIR", "2"))
     modified_files = state.get("modified_files", []) or []
-    if not build_passed and modified_files and max_self_repair > 0:
+    build_needs_self_repair = (
+        not build_result.get("passed", False)
+        and not build_result.get("skipped", False)
+    )
+    if build_needs_self_repair and modified_files and max_self_repair > 0:
         repair_llm = _get_llm(state, "execute_model")
         feedback = ""
         for attempt in range(1, max_self_repair + 1):
@@ -965,6 +981,31 @@ replacement lines
         if not build_passed:
             logger.warning("Self-repair exhausted, proceeding to rollback")
 
+    rolled_back_files: List[str] = []
+    modified_files = state.get("modified_files", []) or []
+    technical_verification_failure = (
+        not build_passed
+        and validation_mode != "static_fallback"
+        and not is_env_error(combined_output)
+    )
+    if technical_verification_failure and modified_files:
+        logger.info(f"馃攧 Auto-rolling back {len(modified_files)} modified files...")
+        rolled_back_files = _rollback_modified_files(project_path, modified_files)
+        if rolled_back_files:
+            state["modified_files"] = []
+            errors = state.get("execution_errors", []) or []
+            errors.append(
+                "ROLLED_BACK due to failed verification: "
+                + ", ".join(rolled_back_files)
+            )
+            state["execution_errors"] = errors
+            state["code_diff"] = (
+                (state.get("code_diff", "") or "").rstrip()
+                + "\n"
+                + "ROLLED_BACK due to failed verification: "
+                + ", ".join(rolled_back_files)
+            ).strip()
+
     round_evaluation = _evaluate_round_outcome(
         state,
         build_passed,
@@ -990,6 +1031,8 @@ replacement lines
         "validation_mode": validation_mode,
         "real_tests_ran": real_tests_ran,
         "static_fallback_reason": static_fallback_reason,
+        "rolled_back": bool(rolled_back_files),
+        "rolled_back_files": rolled_back_files,
     }
     logger.info(
         f"Build: {'✅' if build_result['passed'] else '❌'} | "
@@ -1004,13 +1047,14 @@ replacement lines
             f"Round marked as non-improving (low_value={round_evaluation['low_value_round']}, "
             f"build_passed={build_passed}). Counter managed by interact_node."
         )
-        # Auto-rollback only for technical failures (build error), not low-value-only rounds.
+        # Auto-rollback only for technical verification failures, not low-value-only rounds.
         modified_files = state.get("modified_files", []) or []
-        technical_build_failure = (
-            not build_result.get("passed", False)
-            and not build_result.get("skipped", False)
+        technical_verification_failure = (
+            not build_passed
+            and validation_mode != "static_fallback"
+            and not is_env_error(combined_output)
         )
-        if technical_build_failure and modified_files:
+        if technical_verification_failure and modified_files:
             logger.info(f"🔄 Auto-rolling back {len(modified_files)} modified files...")
             for filepath in modified_files:
                 abs_path = os.path.join(project_path, filepath)
@@ -1019,6 +1063,7 @@ replacement lines
                     shutil.copy2(bak_path, abs_path)
                     logger.info(f"  ↩️ Restored: {filepath}")
             state["modified_files"] = []
+            state["build_result"]["rolled_back"] = True
     else:
         logger.info("Build passed and round is high-value. Counter will be reset by interact_node.")
     

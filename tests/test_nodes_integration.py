@@ -198,7 +198,7 @@ class TestTestNodeIntegration:
         assert result["modified_files"] == []
 
     @patch("nodes.test.LLMService")
-    def test_real_test_failure_preserves_partial_changes(self, MockLLM, tmp_project):
+    def test_real_test_failure_rolls_back_partial_changes(self, MockLLM, tmp_project):
         main_py = tmp_project / "main.py"
         changed_content = "def hello():\n    return 'partial fix'\n"
         main_py.write_text(changed_content, encoding="utf-8")
@@ -225,8 +225,9 @@ class TestTestNodeIntegration:
         ):
             result = test_node(state)
 
-        assert main_py.read_text(encoding="utf-8") == changed_content
-        assert result["modified_files"] == ["main.py"]
+        assert main_py.read_text(encoding="utf-8") == "def hello():\n    print('hello')\n"
+        assert result["modified_files"] == []
+        assert result["build_result"]["rolled_back"] is True
 
 
 class TestLLMServiceTokenBudget:

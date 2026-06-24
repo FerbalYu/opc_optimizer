@@ -55,6 +55,14 @@ y = 20
         mods = parse_search_replace(text)
         assert len(mods) == 0
 
+    def test_crlf_blocks_parse(self):
+        text = "src/main.py\r\n<<<<<<< SEARCH\r\nold\r\n=======\r\nnew\r\n>>>>>>> REPLACE"
+        mods = parse_search_replace(text)
+        assert len(mods) == 1
+        assert mods[0]["filepath"] == "src/main.py"
+        assert mods[0]["old_content_snippet"] == "old"
+        assert mods[0]["new_content"] == "new"
+
     def test_backtick_filepath(self):
         text = """
 `utils/helper.py`

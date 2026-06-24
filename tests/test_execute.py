@@ -7,6 +7,7 @@ from nodes.execute import (
     _apply_modification,
     _filter_modifications_to_contract,
     _get_execute_allowed_paths,
+    _plan_identifiers,
 )
 from utils.file_ops import write_to_file
 
@@ -18,6 +19,26 @@ class TestReadTargetFiles:
         contract = {"target_files": ["extra.py"]}
         result = _read_target_files(str(tmp_project), plan, round_contract=contract)
         assert list(result.keys()) == ["extra.py"]
+
+    def test_contract_target_miss_adds_file_containing_planned_identifier(self, tmp_project):
+        (tmp_project / "src").mkdir()
+        (tmp_project / "src" / "wrong.js").write_text("export const x = 1;\n", encoding="utf-8")
+        (tmp_project / "src" / "llm.js").write_text(
+            "export function splitLiveThinkSections(text) { return text; }\n",
+            encoding="utf-8",
+        )
+        plan = "Optimize splitLiveThinkSections without changing behavior"
+        contract = {"target_files": ["src/wrong.js"]}
+
+        result = _read_target_files(str(tmp_project), plan, round_contract=contract)
+
+        assert "src/wrong.js" in result
+        assert "src/llm.js" in result
+
+    def test_plan_identifiers_picks_code_like_tokens(self):
+        assert _plan_identifiers("Optimize splitLiveThinkSections and SEARCH output") == [
+            "splitLiveThinkSections"
+        ]
 
     def test_reads_mentioned_files(self, tmp_project):
         plan = "We should modify main.py to improve performance"
@@ -77,6 +98,12 @@ class TestFilterModificationsToContract:
         assert kept[0]["filepath"] == "main.py"
         assert len(rejected) == 1
         assert "extra.py" in rejected[0]
+
+    def test_allows_identifier_discovered_files_in_addition_to_contract_paths(self):
+        contract = {"target_files": ["src/wrong.js"]}
+        allowed = _get_execute_allowed_paths(contract, ["src/wrong.js", "src/llm.js"])
+
+        assert allowed == ["src/wrong.js", "src/llm.js"]
 
     def test_allows_all_modifications_without_contract_targets(self):
         modifications = [

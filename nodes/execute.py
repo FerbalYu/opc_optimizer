@@ -103,6 +103,46 @@ def _normalize_contract_paths(round_contract: dict) -> list[str]:
     return normalized
 
 
+def _plan_identifiers(plan: str) -> list[str]:
+    """Pick code-like identifiers from the plan for cheap target-file recovery."""
+    seen = set()
+    identifiers = []
+    for token in re.findall(r"\b[A-Za-z_$][A-Za-z0-9_$]{7,}\b", plan or ""):
+        if token.isupper():
+            continue
+        if not any(char.isupper() for char in token[1:]) and "_" not in token and "$" not in token:
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        identifiers.append(token)
+    return identifiers[:8]
+
+
+def _find_identifier_targets(
+    file_map: dict[str, str],
+    identifiers: list[str],
+    existing: set[str],
+    max_extra: int = 5,
+) -> dict[str, str]:
+    if not identifiers:
+        return {}
+
+    matches = {}
+    for rel_path, abs_path in file_map.items():
+        if rel_path in existing:
+            continue
+        try:
+            content = read_file(abs_path)
+        except Exception:
+            continue
+        if any(identifier in content for identifier in identifiers):
+            matches[rel_path] = abs_path
+            if len(matches) >= max_extra:
+                break
+    return matches
+
+
 def _get_execute_allowed_paths(
     round_contract: dict | None,
     discovered_targets: list[str],
@@ -114,7 +154,11 @@ def _get_execute_allowed_paths(
     for context, but are removed from the execute allowlist.
     """
     contract_paths = _normalize_contract_paths(round_contract or {})
-    allowed = contract_paths or list(discovered_targets)
+    allowed = list(contract_paths or discovered_targets)
+    if contract_paths:
+        for path in discovered_targets:
+            if path not in allowed:
+                allowed.append(path)
     if not round_contract:
         return allowed
 
@@ -233,7 +277,14 @@ def _read_target_files(
             contract_targets[rel_path] = abs_path
 
     if contract_targets:
-        targets = contract_targets
+        targets = dict(contract_targets)
+        targets.update(
+            _find_identifier_targets(
+                file_map,
+                _plan_identifiers(plan),
+                existing=set(targets),
+            )
+        )
     else:
         # Try to find files mentioned in the plan text
         mentioned = {}

@@ -48,6 +48,74 @@ def _default_round_contract(goal: str, project_files: list[str]) -> dict:
     }
 
 
+def _goal_identifiers(goal: str) -> list[str]:
+    seen = set()
+    identifiers = []
+    for token in re.findall(r"\b[A-Za-z_$][A-Za-z0-9_$]{7,}\b", goal or ""):
+        if token.isupper():
+            continue
+        if not any(char.isupper() for char in token[1:]) and "_" not in token and "$" not in token:
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        identifiers.append(token)
+    return identifiers[:8]
+
+
+def _find_goal_target_files(project_path: str, project_files: list[str], goal: str) -> list[str]:
+    identifiers = _goal_identifiers(goal)
+    if not identifiers:
+        return []
+
+    matches = []
+    for fp in project_files:
+        try:
+            content = read_file(fp)
+        except Exception:
+            continue
+        if any(identifier in content for identifier in identifiers):
+            rel = os.path.relpath(fp, project_path).replace("\\", "/")
+            if any(
+                re.search(rf"\b(function|class|const|let|var)\s+{re.escape(identifier)}\b", content)
+                for identifier in identifiers
+            ):
+                matches.insert(0, rel)
+            elif rel not in matches:
+                matches.append(rel)
+            seen = []
+            for path in matches:
+                if path not in seen:
+                    seen.append(path)
+            matches = seen
+            if len(matches) >= 5:
+                break
+    return matches
+
+
+def _align_contract_to_goal_targets(contract: dict, goal_targets: list[str], goal: str) -> dict:
+    if not goal_targets:
+        return contract
+    target_files = contract.get("target_files", []) or []
+    if goal_targets[0] in target_files:
+        return contract
+
+    aligned = dict(contract)
+    aligned["round_objective"] = goal
+    aligned["target_files"] = goal_targets[:3]
+    aligned["current_state_assessment"] = (
+        f"系统校正：用户目标中的代码标识符实际位于 {', '.join(goal_targets[:3])}。"
+    )
+    aligned["expected_diff"] = [
+        f"In {goal_targets[0]}: 按用户目标修改相关代码，保持现有行为验证通过"
+    ]
+    aligned["acceptance_checks"] = (
+        aligned.get("acceptance_checks")
+        or ["运行项目配置的测试命令并通过"]
+    )
+    return aligned
+
+
 def _normalize_round_contract(raw: dict, project_files: list[str], goal: str) -> dict:
     project_set = set(project_files)
 
@@ -421,6 +489,11 @@ def plan_node(state: OptimizerState) -> OptimizerState:
     project_rel_files = [
         os.path.relpath(f, project_path).replace("\\", "/") for f in project_files
     ]
+    goal_target_paths = _find_goal_target_files(project_path, project_files, goal)
+    if goal_target_paths:
+        project_rel_files = goal_target_paths + [
+            path for path in project_rel_files if path not in goal_target_paths
+        ]
     file_tree = "\n".join(rel_path for rel_path in project_rel_files)
 
     # ── Multi-round Memory (v2.2.0 + v2.7.0 condensation) ─────────
@@ -460,13 +533,19 @@ def plan_node(state: OptimizerState) -> OptimizerState:
         # Supplement signatures with full content of the top files
         # so the plan LLM can reference actual code, not just signatures
         if current_round == 1:
-            top_files = list(graph.file_symbols.keys())[:3]
+            top_files = goal_target_paths + [
+                path for path in list(graph.file_symbols.keys())[:3]
+                if path not in goal_target_paths
+            ]
         else:
             prev_history = state.get("round_history", [])
             if prev_history and isinstance(prev_history[-1], dict):
-                top_files = prev_history[-1].get("files_changed", [])[:3]
+                top_files = goal_target_paths + [
+                    path for path in prev_history[-1].get("files_changed", [])[:3]
+                    if path not in goal_target_paths
+                ]
             else:
-                top_files = []
+                top_files = goal_target_paths
 
         for rel in top_files:
             abs_path = os.path.join(project_path, rel)
@@ -481,7 +560,13 @@ def plan_node(state: OptimizerState) -> OptimizerState:
     except Exception as e:
         logger.warning(f"Code graph failed, falling back to file reading: {e}")
         # Fallback: read key files (limit to first ~80 lines each, max 10 files)
-        for fp in project_files[:10]:
+        fallback_files = []
+        for rel in goal_target_paths:
+            abs_path = os.path.join(project_path, rel)
+            if os.path.exists(abs_path):
+                fallback_files.append(abs_path)
+        fallback_files.extend(fp for fp in project_files[:10] if fp not in fallback_files)
+        for fp in fallback_files[:10]:
             rel_path = os.path.relpath(fp, project_path).replace("\\", "/")
             content = read_file(fp)
             if content:
@@ -498,8 +583,9 @@ def plan_node(state: OptimizerState) -> OptimizerState:
         file_previews, budget, label="plan file_previews"
     )
 
+    candidate_paths = project_rel_files[:15]
     candidate_paths_text = (
-        "\n".join(f"- {path}" for path in project_rel_files[:15])
+        "\n".join(f"- {path}" for path in candidate_paths)
         or "- (no files found)"
     )
 
@@ -631,6 +717,7 @@ Generate a different batch that better matches the feedback. Do not repeat the p
                 ]
             )
             contract = _normalize_round_contract(raw_contract, project_rel_files, goal)
+            contract = _align_contract_to_goal_targets(contract, goal_target_paths, goal)
         except Exception as e:
             logger.warning(
                 f"Structured plan generation failed (attempt {attempt + 1}/{MAX_ATTEMPTS}): {e}"
