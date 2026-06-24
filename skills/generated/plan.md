@@ -18,6 +18,13 @@ Generate optimization plan
 - current_plan
 - round_contract
 
+## Allowed Tools
+- context7_docs
+
+## Failure Types
+- plan_generation_failed
+- skill_dispatch_failed
+
 ## Failure Handling
 On failure, preserve state and mark round as partial.
 

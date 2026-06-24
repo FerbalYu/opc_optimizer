@@ -25,6 +25,7 @@ def test_task_router_uses_skill_router_in_skill_mode():
     result = task_router_mod.task_router_node(state)
     assert result["run_mode"] in ("skill_mode", "legacy_mode")
     assert "router" in result["router_decision"]
+    assert result["skill_chain"]
 
 
 def test_task_router_fallback_to_legacy_on_router_failure():
@@ -33,5 +34,6 @@ def test_task_router_fallback_to_legacy_on_router_failure():
     assert result["run_mode"] == "legacy_mode"
     assert result["skill_name"] == "legacy_pipeline"
     assert result["failure_type"] == "router_failed"
+    assert result["fallback_reason"].startswith("skill_router_failed")
+    assert result["skill_chain"] == ["plan", "execute", "test", "report"]
     assert "fallback_legacy" in result["router_decision"]
-

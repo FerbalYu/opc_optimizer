@@ -26,6 +26,9 @@ else:
 
 logger = logging.getLogger("opc.graph")
 
+DEFAULT_SKILL_CHAIN = ["plan", "execute", "test", "report"]
+SUPPORTED_SKILL_NODES = {"plan", "execute", "test", "report", "interact"}
+
 
 def safe_node_wrapper(node_name: str, node_fn: Callable) -> Callable:
     """Wrap a node function with try-except, timing, tracing, and event emission."""
@@ -43,9 +46,30 @@ def safe_node_wrapper(node_name: str, node_fn: Callable) -> Callable:
             except ImportError:
                 from ui.web_server import emit
 
+            loop_step = {
+                "plan": "think",
+                "execute": "act",
+                "test": "observe",
+                "archive": "reflect",
+                "report": "reflect",
+                "interact": "reflect",
+                "task_router": "think",
+            }.get(node_name, "think")
+            state["active_agent"] = node_name
+            state["agent_loop_step"] = loop_step
             emit(
                 "node_start",
                 {"node": node_name, "round": state.get("current_round", 1)},
+            )
+            emit(
+                "agent_step",
+                {
+                    "agent": node_name,
+                    "step": loop_step,
+                    "round": state.get("current_round", 1),
+                    "skill_chain": state.get("skill_chain", []),
+                    "fallback_reason": state.get("fallback_reason", ""),
+                },
             )
             # Emit round_start when plan begins (first node of each round)
             if node_name == "plan":
@@ -225,10 +249,81 @@ def should_continue(state: OptimizerState) -> str:
 
 def should_test(state: OptimizerState) -> str:
     """Conditional edge after execute_node: skip test for fast-path (low) tasks."""
+    if state.get("run_mode") == "skill_mode":
+        skill_chain = state.get("skill_chain", []) or []
+        if skill_chain and "test" not in skill_chain:
+            logger.info("skill_chain excludes test: skipping test node")
+            return "skip_test"
     if state.get("fast_path", False):
         logger.info("fast_path=True: skipping test node, jumping to archive")
         return "skip_test"
     return "run_test"
+
+
+def _resolve_skill_chain(state: OptimizerState) -> list[str]:
+    """Return the effective skill chain for this round.
+
+    legacy_mode deliberately ignores any experimental skill_chain override so
+    the old linear workflow remains stable.
+    """
+    if state.get("run_mode", "legacy_mode") != "skill_mode":
+        return list(DEFAULT_SKILL_CHAIN)
+
+    raw_chain = state.get("skill_chain", []) or DEFAULT_SKILL_CHAIN
+    chain: list[str] = []
+    for skill_name in raw_chain:
+        if skill_name in SUPPORTED_SKILL_NODES and skill_name not in chain:
+            chain.append(skill_name)
+    return chain or list(DEFAULT_SKILL_CHAIN)
+
+
+def _first_skill_node(state: OptimizerState) -> str:
+    """Route from task_router or loop restart to the first declared skill."""
+    return _resolve_skill_chain(state)[0]
+
+
+def _next_declared_skill(state: OptimizerState, current: str) -> str:
+    """Find the next requested skill after the current workflow node."""
+    chain = _resolve_skill_chain(state)
+    if current not in chain:
+        return "interact"
+
+    next_index = chain.index(current) + 1
+    if next_index >= len(chain):
+        return "interact"
+    return chain[next_index]
+
+
+def _route_after_plan(state: OptimizerState) -> str:
+    """Route after plan according to the effective skill chain."""
+    return _next_declared_skill(state, "plan")
+
+
+def _route_after_execute(state: OptimizerState) -> str:
+    """Route after execute, preserving fast-path and archive behavior."""
+    if should_test(state) == "run_test":
+        return "test"
+    return "archive"
+
+
+def _route_after_archive(state: OptimizerState) -> str:
+    """Archive is a system node; continue to report only if requested."""
+    if state.get("run_mode", "legacy_mode") != "skill_mode":
+        return "report"
+    chain = _resolve_skill_chain(state)
+    return "report" if "report" in chain else "interact"
+
+
+def _route_after_report(state: OptimizerState) -> str:
+    """Report always hands control to interact for loop/stop decisions."""
+    return "interact"
+
+
+def _route_after_interact(state: OptimizerState) -> str:
+    """Loop back to the first requested skill, or finish."""
+    if should_continue(state) == "end":
+        return "end"
+    return _first_skill_node(state)
 
 
 def _build_skill_dispatcher(skill_name: str, legacy_fn: Callable) -> Callable:
@@ -254,6 +349,7 @@ def _build_skill_dispatcher(skill_name: str, legacy_fn: Callable) -> Callable:
             )
             state["run_mode"] = "legacy_mode"
             state["failure_type"] = "skill_dispatch_failed"
+            state["fallback_reason"] = f"skill_dispatch_failed:{skill_name}:{type(exc).__name__}"
             state["router_decision"] = (
                 f"skill_dispatch:fallback_legacy({skill_name}:{type(exc).__name__})"
             )
@@ -310,9 +406,7 @@ def create_optimizer_graph(project_path: str = None, skill_registry: Optional[ob
         "interact", _build_skill_dispatcher("interact", interact_node)
     )  # No wrapper — interact must propagate stop signals
 
-    # Define the strict linear flow
     workflow.set_entry_point("task_router")
-    workflow.add_edge("task_router", "plan")
 
     # Build edge chain — default linear order (execute has conditional branch)
     node_order = ["plan", "execute", "test", "archive", "report", "interact"]
@@ -342,27 +436,64 @@ def create_optimizer_graph(project_path: str = None, skill_registry: Optional[ob
                 )
 
     # ── Conditional routing ──────────────────────────────────────
-    workflow.add_edge("plan", "execute")
+    workflow.add_conditional_edges(
+        "task_router",
+        _first_skill_node,
+        {
+            "plan": "plan",
+            "execute": "execute",
+            "test": "test",
+            "report": "report",
+            "interact": "interact",
+        },
+    )
+    workflow.add_conditional_edges(
+        "plan",
+        _route_after_plan,
+        {
+            "execute": "execute",
+            "test": "test",
+            "report": "report",
+            "interact": "interact",
+        },
+    )
     workflow.add_conditional_edges(
         "execute",
-        should_test,
+        _route_after_execute,
         {
-            "run_test": "test",  # Normal path: run test
-            "skip_test": "archive",  # Fast path: skip test
+            "test": "test",  # Normal path: run test
+            "archive": "archive",  # Fast path / chain skip: archive before report
         },
     )
 
     # Linear chain through remaining nodes
     workflow.add_edge("test", "archive")
-    workflow.add_edge("archive", "report")
-    workflow.add_edge("report", "interact")
+    workflow.add_conditional_edges(
+        "archive",
+        _route_after_archive,
+        {
+            "report": "report",
+            "interact": "interact",
+        },
+    )
+    workflow.add_conditional_edges(
+        "report",
+        _route_after_report,
+        {
+            "interact": "interact",
+        },
+    )
 
     # ── Loop back or end ──────────────────────────────────────────
     workflow.add_conditional_edges(
         "interact",
-        should_continue,
+        _route_after_interact,
         {
-            "continue": node_order[0],  # Start a fresh plan for the next round
+            "plan": "plan",
+            "execute": "execute",
+            "test": "test",
+            "report": "report",
+            "interact": "interact",
             "end": END,
         },
     )

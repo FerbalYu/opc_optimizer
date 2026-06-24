@@ -1,6 +1,7 @@
 import os
 import shutil
 import pytest
+from unittest.mock import patch
 from nodes.execute import (
     _read_target_files,
     _apply_modification,
@@ -189,6 +190,25 @@ class TestApplyModification:
             assert "def hello_world():" in f.read()
         # Verify backup was created
         assert (tmp_project / "main.py.bak").exists()
+
+    def test_formatting_runs_through_tool_runtime_when_state_is_provided(self, tmp_project):
+        mod = {
+            "filepath": "main.py",
+            "old_content_snippet": "def hello():",
+            "new_content": "def hello_world():",
+            "reason": "Better naming",
+        }
+        state = {"project_path": str(tmp_project), "current_round": 1}
+
+        with patch("nodes.execute._get_formatter", return_value={"name": "fake"}), patch(
+            "utils.formatter.format_file",
+            return_value=(True, "Formatted main.py"),
+        ):
+            result = _apply_modification(str(tmp_project), mod, state=state)
+
+        assert result.endswith("[formatted]")
+        assert state["tool_calls"][0]["tool_name"] == "format_file"
+        assert state["tool_calls"][0]["ok"] is True
 
     def test_strips_invisible_llm_formatting_chars_before_python_compile(self, tmp_project):
         mod = {

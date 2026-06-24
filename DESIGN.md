@@ -141,6 +141,27 @@ outcome.
 - [x] Focused tests cover the new CLI flag, visual-only interaction behavior,
   static UI marker, and Web UI readiness endpoint.
 
+## Desktop Edition Direction
+The desktop edition uses a PySide6 native shell with an embedded
+`QWebEngineView`. The embedded page is a new desktop-specific dashboard with a
+Three.js 3D runtime view and QWebChannel communication back to Python. It does
+not use the Web UI WebSocket transport and does not reuse the browser app-mode
+prototype.
+
+The desktop 3D scene preserves the original Web UI concept: a Minecraft-style
+office with six workflow stations and a block character moving between desks as
+optimizer events arrive. The scene should not be replaced by an abstract node
+graph or a custom 3D engine.
+
+## Desktop Edition Acceptance Criteria
+- [x] `python -m opc_optimizer --desktop` starts the PySide6 desktop app without
+  requiring a project path.
+- [x] `python -m opc_optimizer <project> --desktop` starts the same optimizer
+  flow with live UI updates through QWebChannel.
+- [x] `--desktop` appears in package help output.
+- [x] Focused tests cover the desktop bridge and static WebView contract.
+- [x] A portable Windows build script packages the desktop static assets.
+
 ## Visual Insight Direction
 The selected next ideas are: five-round value curve, file-change wall, prompt
 microscope, round health score, and next-step suggestions. The first slice keeps
@@ -160,3 +181,24 @@ iterations can map the same data into richer 3D objects.
 - [x] Health score appears as a 3D beacon near the report area.
 - [x] The last five round scores appear as 3D value bars.
 - [x] Changed files appear as colored 3D bricks by file category.
+
+## Agent Evolution Direction
+The next architecture step is to make OPC's Agent loop explicit: skills choose
+the work, tools perform bounded external actions, and the UI shows the
+think/act/observe/reflect cycle instead of only node progress.
+
+## Agent Evolution Acceptance Criteria
+- [x] Built-in tools have a registry contract (`ToolSpec` / `ToolRegistry`).
+- [x] Tool calls run through a shared runtime that records `tool_calls` and
+  emits WebSocket lifecycle events.
+- [x] Build, test, and UI verification are called through the tool runtime while
+  preserving existing `build_result` / `test_results` behavior.
+- [x] Context7 documentation grounding and post-write formatting are also
+  routed through the tool runtime.
+- [x] `skill_router` writes the resolved `skill_chain`, and `skill_mode` uses
+  that chain to select the next graph node while preserving `legacy_mode`
+  behavior.
+- [x] State and metrics expose `skill_chain`, `active_agent`,
+  `agent_loop_step`, `tool_calls`, and `fallback_reason`.
+- [x] The Web UI shows Agent Loop state, current sub-agent, skill chain,
+  fallback reason, and recent tool calls.

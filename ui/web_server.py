@@ -32,6 +32,19 @@ def set_optimizer_state(state: dict):
 
 _clients: list = []
 _loop: Optional[asyncio.AbstractEventLoop] = None
+_event_sinks: list = []
+
+
+def add_event_sink(callback):
+    """Register an in-process UI event sink."""
+    if callback not in _event_sinks:
+        _event_sinks.append(callback)
+
+
+def remove_event_sink(callback):
+    """Remove a previously registered in-process UI event sink."""
+    if callback in _event_sinks:
+        _event_sinks.remove(callback)
 
 
 def emit(event_type: str, data: Optional[Dict[str, Any]] = None):
@@ -42,14 +55,20 @@ def emit(event_type: str, data: Optional[Dict[str, Any]] = None):
                     log, round_start, round_end, cost_update
         data: Event payload dict
     """
-    if _loop is None or _loop.is_closed():
-        return
-
     payload = data or {}
 
     # -- Store round details for later retrieval (v2.3.0) ---------
     if event_type == "round_history_update":
         _round_details.append(payload)
+
+    for sink in list(_event_sinks):
+        try:
+            sink(event_type, payload)
+        except Exception as exc:
+            logger.debug("event sink failed for %s: %s", event_type, exc)
+
+    if _loop is None or _loop.is_closed():
+        return
 
     message = json.dumps(
         {
@@ -89,6 +108,14 @@ def wait_for_user_command(timeout: float = 300) -> Optional[Dict[str, Any]]:
         _user_command = None
         return cmd
     return None
+
+
+def submit_user_command(command: Dict[str, Any]) -> Dict[str, Any]:
+    """Submit a UI command from an in-process client such as Desktop."""
+    global _user_command
+    _user_command = command
+    _user_command_event.set()
+    return command
 
 
 async def _broadcast(message: str):

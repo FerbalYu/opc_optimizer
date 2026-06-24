@@ -18,6 +18,16 @@ Run verification and quality checks
 - build_result
 - round_evaluation
 
+## Allowed Tools
+- build_check
+- test_check
+- ui_check
+
+## Failure Types
+- build_failed
+- test_failed
+- tool_missing
+
 ## Failure Handling
 On failure, preserve state and mark round as partial.
 

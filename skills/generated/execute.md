@@ -17,6 +17,14 @@ Apply code modifications from plan
 - code_diff
 - modified_files
 
+## Allowed Tools
+- context7_docs
+- format_file
+
+## Failure Types
+- execute_failed
+- tool_path_violation
+
 ## Failure Handling
 On failure, stop risky actions and fallback to legacy guidance.
 

@@ -50,8 +50,13 @@ def _prepare_initial_state(
                     "skill_name",
                     "skill_pipeline" if run_mode == "skill_mode" else "legacy_pipeline",
                 )
+                initial_state.setdefault("skill_chain", [])
+                initial_state.setdefault("active_agent", "")
+                initial_state.setdefault("tool_calls", [])
+                initial_state.setdefault("agent_loop_step", "think")
                 initial_state.setdefault("router_decision", "legacy_resume")
                 initial_state.setdefault("failure_type", "none")
+                initial_state.setdefault("fallback_reason", "")
                 initial_state.setdefault("active_tasks", [])
                 initial_state.setdefault("ui_preferences", {"skip_plan_review": False})
         except Exception as e:
@@ -82,8 +87,13 @@ def _prepare_initial_state(
             "skill_name": (
                 "skill_pipeline" if run_mode == "skill_mode" else "legacy_pipeline"
             ),
+            "skill_chain": [],
+            "active_agent": "",
+            "tool_calls": [],
+            "agent_loop_step": "think",
             "router_decision": "legacy_linear",
             "failure_type": "none",
+            "fallback_reason": "",
             "llm_config": llm_config,
             "ui_preferences": {
                 "skip_plan_review": bool(getattr(run_args, "skip_plan_review", False)),
@@ -240,7 +250,7 @@ def parse_args():
         type=str,
         nargs="?",
         default=None,
-        help="Absolute path to the target project directory (optional with --web-ui)",
+        help="Absolute path to the target project directory (optional with --web-ui/--desktop)",
     )
     parser.add_argument(
         "--goal",
@@ -296,6 +306,11 @@ def parse_args():
         help="Launch Minecraft-style 3D Web UI in browser",
     )
     parser.add_argument(
+        "--desktop",
+        action="store_true",
+        help="Launch the PySide6 desktop app",
+    )
+    parser.add_argument(
         "--visual",
         action="store_true",
         help="启动 CLI 3D 可视化副屏，CLI 仍作为主控入口",
@@ -338,11 +353,13 @@ def parse_args():
 
     args = parser.parse_args()
 
-    # project_path is required unless --web-ui is used standalone
+    # project_path is required unless an interactive UI is used standalone
     if args.project_path and not os.path.exists(args.project_path):
         raise ValueError(f"Target project path does not exist: {args.project_path}")
-    if not args.project_path and not args.web_ui:
-        parser.error("project_path is required (or use --web-ui for standalone mode)")
+    if not args.project_path and not (args.web_ui or args.desktop):
+        parser.error(
+            "project_path is required (or use --web-ui/--desktop for standalone mode)"
+        )
 
     return args
 
@@ -555,6 +572,10 @@ def main():
             else:
                 tui.print_success("All optimization rounds completed!")
             _keep_webui_alive(True)
+        elif args.desktop:
+            from .ui.desktop.app import run_desktop_app
+
+            sys.exit(run_desktop_app(args))
         elif args.web_ui:
             http_port, ws_port = _resolve_web_ui_ports(args.http_port)
             print(f"🌐 启动 Web UI: http://127.0.0.1:{http_port}")

@@ -187,10 +187,11 @@ archive_every: 3
 # auto: true          # 无人值守模式
 
 # ─── LLM 配置 ───────────────────────────────────────
-# model: "openai/gpt-4o"        # 默认模型
-# plan_model: "openai/gpt-4o"   # 规划节点模型
-# execute_model: "openai/gpt-4o" # 执行节点模型
-# test_model: "openai/gpt-4o-mini" # 测试节点模型 (可用小模型)
+# 默认模型: MiniMax-M3（推荐搭配 OPENAI_API_BASE=https://api.minimaxi.com/v1）
+# model: "MiniMax-M3"           # 默认模型
+# plan_model: "MiniMax-M3"      # 规划节点模型
+# execute_model: "MiniMax-M3"   # 执行节点模型
+# test_model: "MiniMax-M3"      # 测试节点模型 (可用更便宜的 MiniMax-M3-mini 等)
 timeout: 120                     # LLM 调用超时 (秒)
 
 # ─── 格式化 (v2.8.0) ────────────────────────────────

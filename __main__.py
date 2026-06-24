@@ -5,12 +5,14 @@ Entry point for running OPC as a module: python -m opc_optimizer
 This module enables the following execution modes:
     python -m opc_optimizer [options]
     python -m opc_optimizer --web-ui
+    python -m opc_optimizer --desktop
 
 The main() function from main.py is called to handle all CLI arguments
 and start the optimization workflow.
 
 Supported CLI Arguments:
     --web-ui               Launch Minecraft-style 3D Web UI in browser
+    --desktop              Launch the PySide6 desktop app
     --visual               Start the 3D visual companion while CLI remains primary
     --goal GOAL            Set the primary optimization goal
     --max-rounds N         Maximum number of optimization rounds

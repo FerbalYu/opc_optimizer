@@ -364,6 +364,35 @@ def _build_doc_context(project_path: str, plan: str) -> str:
         return ""
 
 
+def _build_doc_context_via_tool(
+    project_path: str, plan: str, state: OptimizerState
+) -> str:
+    """Build optional docs grounding through the shared tool runtime."""
+    try:
+        from utils.tool_runtime import run_tool
+
+        def _context7_tool(payload, _state):
+            return {
+                "ok": True,
+                "docs": _build_doc_context(payload["project_path"], payload["plan"]),
+            }
+
+        result = run_tool(
+            "context7_docs",
+            {"project_path": project_path, "plan": plan},
+            state,
+            handlers={"context7_docs": _context7_tool},
+        )
+        if result.ok:
+            return str(result.data.get("docs") or result.output or "")
+        return ""
+    except Exception as e:
+        logger.warning(f"Context7 tool runtime failed, using legacy path: {e}")
+        state["failure_type"] = "tool_runtime_failed"
+        state["fallback_reason"] = f"context7_tool_runtime_failed:{type(e).__name__}"
+        return _build_doc_context(project_path, plan)
+
+
 # ── Formatter cache (v2.8.0) ─────────────────────────────────────
 _formatter_cache: dict = {}
 
@@ -414,7 +443,11 @@ def _clean_llm_patch_text(text: str) -> str:
 
 
 def _apply_modification(
-    project_path: str, mod: dict, dry_run: bool = False, auto_mode: bool = False
+    project_path: str,
+    mod: dict,
+    dry_run: bool = False,
+    auto_mode: bool = False,
+    state: OptimizerState | None = None,
 ) -> str:
     """Apply a single file modification via temp-dir sandbox + fuzzy matching.
 
@@ -523,7 +556,32 @@ def _apply_modification(
 
             _fmt = _get_formatter(project_path)
             if _fmt:
-                ok, msg = format_file(_fmt, abs_path, project_path)
+                if state is not None:
+                    from utils.tool_runtime import run_tool
+
+                    def _format_tool(payload, _state):
+                        ok, msg = format_file(
+                            payload["formatter"],
+                            os.path.join(
+                                payload["project_path"], payload["filepath"]
+                            ),
+                            payload["project_path"],
+                        )
+                        return {"passed": ok, "output": msg}
+
+                    call = run_tool(
+                        "format_file",
+                        {
+                            "project_path": project_path,
+                            "filepath": filepath,
+                            "formatter": _fmt,
+                        },
+                        state,
+                        handlers={"format_file": _format_tool},
+                    )
+                    ok, msg = call.ok, call.output
+                else:
+                    ok, msg = format_file(_fmt, abs_path, project_path)
                 if ok and "Formatted" in msg:
                     format_info = " [formatted]"
                     logger.info(f"  🧹 {msg}")
@@ -623,7 +681,7 @@ def execute_node(state: OptimizerState) -> OptimizerState:
     files_context = _build_smart_context(
         project_path, current_plan, round_contract=round_contract
     )
-    docs_context = _build_doc_context(project_path, current_plan)
+    docs_context = _build_doc_context_via_tool(project_path, current_plan, state)
 
     preamble_block = ""
     try:
@@ -853,7 +911,7 @@ If no safe change is possible, return exactly: NO_CHANGES
 
         for mod in modifications:
             result = _apply_modification(
-                project_path, mod, dry_run=dry_run, auto_mode=auto_mode
+                project_path, mod, dry_run=dry_run, auto_mode=auto_mode, state=state
             )
             diff_summary.append(result)
 

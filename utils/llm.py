@@ -69,7 +69,8 @@ class LLMService:
         # DeepSeek
         "deepseek-chat": (0.14, 0.28),
         "deepseek-coder": (0.14, 0.28),
-        # MiniMax
+        # MiniMax (MiniMax-M3 is the current default; legacy "minimax" kept for prefix fallback)
+        "MiniMax-M3": (0.70, 0.70),
         "minimax": (0.70, 0.70),
     }
 
@@ -85,21 +86,22 @@ class LLMService:
 
     def __init__(
         self,
-        model_name: str = "openai/gpt-4o",
+        model_name: str = "MiniMax-M3",
         max_retries: int = 3,
         timeout: int = 120,
     ):
         """
         Initialize the LLM Service.
-        Supports OpenAI, MiniMax, Claude, etc via LiteLLM format.
+        Default model is MiniMax-M3. Supports MiniMax, OpenAI, Claude, etc via LiteLLM format.
+        Set DEFAULT_LLM_MODEL in the environment to override the default at runtime.
         """
         self.model_name = model_name
         self.max_retries = max_retries
         self.timeout = int(self._get_env("LLM_TIMEOUT", str(timeout)))
         self.max_context_tokens = int(self._get_env("MAX_CONTEXT_TOKENS", "120000"))
 
-        # Fallback to env if model is the default placeholder
-        if model_name == "openai/gpt-4o":
+        # Fallback to env if caller passed the default placeholder
+        if model_name == "MiniMax-M3":
             default_model = self._get_env("DEFAULT_LLM_MODEL", "")
             if default_model:
                 self.model_name = default_model

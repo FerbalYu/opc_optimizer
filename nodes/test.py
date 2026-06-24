@@ -783,15 +783,83 @@ Do not output markdown, explanations, or quotes. Only the raw command string."""
             except Exception as e:
                 logger.warning(f"Failed to autonomously infer test command: {e}")
 
-    build_output = _detect_and_run_build(project_path, profile, timeout=build_timeout)
-    build_result = _build_result_from_output(build_output)
-    test_result = _run_test_check(project_path, profile, timeout=build_timeout)
-    ui_result = _run_ui_check(
-        project_path,
-        profile,
-        timeout=int(os.environ.get("UI_CHECK_TIMEOUT", "60")),
-        round_num=state.get("current_round", 1),
-    )
+    try:
+        from utils.tool_runtime import run_tool
+
+        def _build_tool(payload, _state):
+            build_output = _detect_and_run_build(
+                payload["project_path"],
+                payload["profile"],
+                timeout=payload["timeout"],
+            )
+            return _build_result_from_output(build_output)
+
+        def _test_tool(payload, _state):
+            return _run_test_check(
+                payload["project_path"],
+                payload["profile"],
+                timeout=payload["timeout"],
+            )
+
+        def _ui_tool(payload, _state):
+            return _run_ui_check(
+                payload["project_path"],
+                payload["profile"],
+                timeout=payload["timeout"],
+                round_num=payload["round_num"],
+            )
+
+        build_call = run_tool(
+            "build_check",
+            {"project_path": project_path, "profile": profile, "timeout": build_timeout},
+            state,
+            handlers={"build_check": _build_tool},
+        )
+        test_call = run_tool(
+            "test_check",
+            {"project_path": project_path, "profile": profile, "timeout": build_timeout},
+            state,
+            handlers={"test_check": _test_tool},
+        )
+        ui_call = run_tool(
+            "ui_check",
+            {
+                "project_path": project_path,
+                "profile": profile,
+                "timeout": int(os.environ.get("UI_CHECK_TIMEOUT", "60")),
+                "round_num": state.get("current_round", 1),
+            },
+            state,
+            handlers={"ui_check": _ui_tool},
+        )
+        build_result = build_call.data or {
+            "passed": build_call.ok,
+            "output": build_call.output,
+            "skipped": False,
+        }
+        test_result = test_call.data or {
+            "passed": test_call.ok,
+            "output": test_call.output,
+            "skipped": False,
+        }
+        ui_result = ui_call.data or {
+            "passed": ui_call.ok,
+            "output": ui_call.output,
+            "skipped": False,
+        }
+    except Exception as e:
+        logger.warning(f"Tool runtime verification failed, using legacy path: {e}")
+        state["failure_type"] = "tool_runtime_failed"
+        state["fallback_reason"] = f"verification_tool_runtime_failed:{type(e).__name__}"
+        build_output = _detect_and_run_build(project_path, profile, timeout=build_timeout)
+        build_result = _build_result_from_output(build_output)
+        test_result = _run_test_check(project_path, profile, timeout=build_timeout)
+        ui_result = _run_ui_check(
+            project_path,
+            profile,
+            timeout=int(os.environ.get("UI_CHECK_TIMEOUT", "60")),
+            round_num=state.get("current_round", 1),
+        )
     
     # Combine results
     combined_output = build_result["output"] + "\n" + test_result["output"] + "\n" + ui_result["output"]

@@ -9,6 +9,8 @@ class SkillIOContract:
     name: str
     required_inputs: List[str]
     expected_outputs: List[str]
+    allowed_tools: List[str]
+    failure_types: List[str]
 
 
 BASE_SKILL_CONTRACTS: Dict[str, SkillIOContract] = {
@@ -16,26 +18,36 @@ BASE_SKILL_CONTRACTS: Dict[str, SkillIOContract] = {
         name="plan",
         required_inputs=["project_path", "optimization_goal", "current_round"],
         expected_outputs=["current_plan", "round_contract"],
+        allowed_tools=["context7_docs"],
+        failure_types=["plan_generation_failed", "skill_dispatch_failed"],
     ),
     "execute": SkillIOContract(
         name="execute",
         required_inputs=["project_path", "current_plan"],
         expected_outputs=["code_diff", "modified_files"],
+        allowed_tools=["context7_docs", "format_file"],
+        failure_types=["execute_failed", "tool_path_violation"],
     ),
     "test": SkillIOContract(
         name="test",
         required_inputs=["project_path", "code_diff"],
         expected_outputs=["test_results", "build_result", "round_evaluation"],
+        allowed_tools=["build_check", "test_check", "ui_check"],
+        failure_types=["build_failed", "test_failed", "tool_missing"],
     ),
     "interact": SkillIOContract(
         name="interact",
         required_inputs=["current_round", "max_rounds"],
         expected_outputs=["should_stop", "current_round"],
+        allowed_tools=[],
+        failure_types=["interaction_failed"],
     ),
     "report": SkillIOContract(
         name="report",
         required_inputs=["project_path", "current_round"],
         expected_outputs=["round_reports", "round_history"],
+        allowed_tools=[],
+        failure_types=["report_failed"],
     ),
 }
 
@@ -62,4 +74,3 @@ def validate_skill_output(skill_name: str, state: dict) -> None:
         raise ValueError(
             f"Skill '{skill_name}' missing expected outputs: {', '.join(missing)}"
         )
-

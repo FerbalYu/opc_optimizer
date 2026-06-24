@@ -1677,6 +1677,86 @@ Checklist:
   下一步建议:
 - 可进入运维执行阶段：按 `rollout_decision.json` 执行灰度与回退控制
 
+## 11.3 Phase 7 模型默认切换（2026-06-02）
+
+> 一次性硬化：把 OPC Optimizer 的默认 LLM 从 `openai/gpt-4o` 切换到
+> **MiniMax-M3**，同步更新 UI 候选项、YAML 注释、配置模板、README 与
+> PROGRESS.md。`DEFAULT_LLM_MODEL` env 变量与 `--plan-model` /
+> `--execute-model` / `--test-model` CLI 仍可覆盖默认。
+
+### M7-1 默认模型切到 MiniMax-M3
+
+- 状态: [ ] 未开始 [ ] 进行中 [x] 已完成 [ ] 阻塞
+- 类型: [ ] INFRA [x] BRIDGE [ ] QUALITY
+- 影响文件:
+  - [x] `utils/llm.py`（`MODEL_PRICING` 加 `MiniMax-M3` 条目；`__init__` 默认值 `openai/gpt-4o` → `MiniMax-M3`）
+  - [x] `ui/web/landing.html`（模型下拉框新增"MiniMax-M3 (推荐)"选项；默认项标注"默认 (MiniMax-M3)"）
+  - [x] `opc.config.example.yaml`（`model` 注释从 `openai/gpt-4o` 改为 `MiniMax-M3` + minimaxi.com 提示）
+  - [x] `utils/config_template.py`（生成模板的默认模型注释改为 `MiniMax-M3`）
+  - [x] `README.md`（Quick Start 改 `MiniMax-M2.7` → `MiniMax-M3`）
+  - [x] `tests/test_step4_features.py`（新增 3 个 M3 测试：默认签名、价目表存在、计费正确）
+  - [x] `docs/PROGRESS.md`（Completed / Verification / Decisions 三处同步）
+  - [x] `task.md`（新增 M7-1 任务卡）
+
+- Task Checklist:
+  - [x] ANALYZE 完成
+  - [x] PLAN 完成
+  - [x] IMPLEMENT 完成
+  - [x] VERIFY 完成
+  - [x] REPORT 完成
+  - [x] HANDOFF 完成
+
+- 执行清单:
+  - [x] ANALYZE（已审计 5 处模型相关代码 + 1 处测试入口）
+  - [x] PLAN（已与用户确认：硬默认 + minimaxi.com + 沿用 M2.7 占位价 0.70/0.70）
+  - [x] IMPLEMENT（最小侵入：仅改默认值/注释/UI 候选项，保留 env 覆盖路径）
+  - [x] VERIFY（test_step4_features.py 20 passed；全量 582 passed；CLI --help 正常）
+  - [x] REPORT（输出变更摘要、风险与下一步）
+  - [x] HANDOFF（更新本节任务卡 + PROGRESS.md）
+
+- 验证记录:
+  - [x] 命令1: `python -m pytest tests/test_step4_features.py -q` -> pass（20 passed，含 3 个新 M3 测试）
+  - [x] 命令2: `python -m pytest -q` -> pass（582 passed，1 已存在的 async mock warning）
+  - [x] 命令3: `python -m opc_optimizer --help` -> pass（CLI 全部参数保留）
+  - [x] 冒烟: `LLMService.__init__` 默认 `MiniMax-M3`；`MODEL_PRICING["MiniMax-M3"] = (0.70, 0.70)`
+
+- 结论:
+  - [x] 可合并
+  - [x] 需继续（拿到 M3 官方报价后回填定价）
+  - [ ] 已阻塞（需人工决策）
+
+【Task Handoff】
+阶段: Phase 7
+子任务: M7-1 默认模型切换至 MiniMax-M3
+状态: done
+Checklist:
+- [x] ANALYZE
+- [x] PLAN
+- [x] IMPLEMENT
+- [x] VERIFY
+- [x] REPORT
+- [x] HANDOFF
+      代码改动:
+- utils/llm.py（MODEL_PRICING + __init__ 默认值 + env 兜底判断）
+- ui/web/landing.html（模型下拉框默认项 + M3 推荐项）
+- opc.config.example.yaml（model 注释 + API base 提示）
+- utils/config_template.py（生成模板的默认注释）
+- README.md（Quick Start 改 M2.7 → M3）
+- tests/test_step4_features.py（新增 3 个 M3 测试）
+- docs/PROGRESS.md（Completed / Verification / Decisions 同步）
+- task.md（M7-1 看板 + Handoff 块）
+      测试结果:
+- python -m pytest tests/test_step4_features.py -q -> pass（20 passed）
+- python -m pytest -q -> pass（582 passed）
+- python -m opc_optimizer --help -> pass
+      风险与注意:
+- `MiniMax-M3` 价格 0.70/0.70 是沿用 M2.7 的占位，待 M3 官方报价后回填
+- 旧 lowercase `minimax` 价格条目保留作为 prefix-fallback，不删除
+- 当前进程若残留 `DEFAULT_LLM_MODEL=openai/MiniMax-M2.7` env 仍会覆盖默认
+      下一步建议:
+- 拿到 M3 官方报价后回填 utils/llm.py 第 73 行的 `(0.70, 0.70)` 元组
+- 可选：增加 `MiniMax-M3-mini` 轻量条目给 `--test-model` 用
+
 ## 12. Definition of Done（任务完成判定）
 
 子任务可标记 `done` 必须同时满足：

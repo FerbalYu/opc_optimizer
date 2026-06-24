@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OPC Desktop</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero-panel">
+      <div class="topbar">
+        <div>
+          <h1>OPC Desktop</h1>
+          <p>Local optimizer workspace</p>
+        </div>
+        <div id="connectionState" class="status-chip">Bridge starting</div>
+      </div>
+
+      <div class="stage-wrap">
+        <canvas id="sceneCanvas" aria-label="OPC 3D runtime dashboard"></canvas>
+        <div class="scene-overlay">
+          <div>
+            <span>Round</span>
+            <strong id="roundValue">-</strong>
+          </div>
+          <div>
+            <span>Active Agent</span>
+            <strong id="agentValue">-</strong>
+          </div>
+          <div>
+            <span>Health</span>
+            <strong id="healthValue">-</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="control-panel">
+      <section class="panel run-panel">
+        <h2>Run Control</h2>
+        <label>Project Path</label>
+        <div class="path-row">
+          <input id="projectPath" type="text" placeholder="Choose or enter project path" />
+          <button id="browseBtn" type="button">Choose</button>
+        </div>
+        <label>Optimization Goal</label>
+        <textarea id="goalInput" rows="4">Improve code quality, performance, and architecture</textarea>
+        <div class="run-grid">
+          <label>Rounds <input id="maxRounds" type="number" min="1" max="20" value="5" /></label>
+          <label><input id="autoMode" type="checkbox" /> Auto</label>
+          <label><input id="dryRun" type="checkbox" /> Dry Run</label>
+        </div>
+        <div class="button-row">
+          <button id="startBtn" class="primary" type="button">Start</button>
+          <button data-action="continue" type="button">Continue</button>
+          <button data-action="stop" type="button">Stop</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Agent Loop</h2>
+        <div id="agentLoop" class="step-row">
+          <span data-step="think">Think</span>
+          <span data-step="act">Act</span>
+          <span data-step="observe">Observe</span>
+          <span data-step="reflect">Reflect</span>
+        </div>
+        <p id="skillChain" class="muted">Skill chain: -</p>
+      </section>
+
+      <section class="panel">
+        <h2>Tool Calls</h2>
+        <div id="toolCalls" class="list empty">No tool calls</div>
+      </section>
+
+      <section class="panel">
+        <h2>Insights</h2>
+        <div id="insights" class="insight-grid">
+          <div><span>Value</span><strong id="valueLabel">-</strong></div>
+          <div><span>Files</span><strong id="fileCount">0</strong></div>
+          <div><span>Next</span><strong id="nextAction">-</strong></div>
+        </div>
+      </section>
+    </aside>
+
+    <section class="bottom-panel">
+      <div class="panel">
+        <h2>Round History</h2>
+        <div id="roundHistory" class="timeline empty">No round history</div>
+      </div>
+      <div class="panel">
+        <h2>Report And Log</h2>
+        <div id="logList" class="log-list"></div>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

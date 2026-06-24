@@ -192,6 +192,10 @@ def report_node(state: OptimizerState) -> OptimizerState:
             "files_changed": list(state.get("modified_files", []) or []),
             "timings": state.get("node_timings", {}),
             "evaluation": round_evaluation,
+            "skill_chain": list(state.get("skill_chain", []) or []),
+            "active_agent": state.get("active_agent", ""),
+            "tool_calls": list(state.get("tool_calls", []) or [])[-10:],
+            "fallback_reason": state.get("fallback_reason", ""),
             "insight": round_insight,
         })
         emit("round_insight", round_insight)

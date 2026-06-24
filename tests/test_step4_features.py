@@ -94,8 +94,29 @@ class TestTokenCostTracking:
         cost = llm._calculate_cost(0, 0)
         assert cost == 0.0
 
+    def test_calculate_cost_MiniMax_m3(self):
+        """MiniMax-M3 is the project default and must be priced."""
+        # Use a non-placeholder name to bypass DEFAULT_LLM_MODEL env override,
+        # then force model_name to MiniMax-M3 to exercise the pricing table.
+        llm = LLMService(model_name="__test_bypass__")
+        llm.model_name = "MiniMax-M3"
+        cost = llm._calculate_cost(1_000_000, 1_000_000)
+        input_p, output_p = LLMService.MODEL_PRICING["MiniMax-M3"]
+        expected = input_p + output_p
+        assert abs(cost - expected) < 0.001
+
+    def test_default_model_signature_is_MiniMax_m3(self):
+        """LLMService.__init__ should default to MiniMax-M3 (signature-level)."""
+        import inspect
+
+        sig = inspect.signature(LLMService.__init__)
+        assert sig.parameters["model_name"].default == "MiniMax-M3"
+
     def test_pricing_table_has_entries(self):
         assert len(LLMService.MODEL_PRICING) >= 10
+
+    def test_MiniMax_m3_listed_in_pricing(self):
+        assert "MiniMax-M3" in LLMService.MODEL_PRICING
 
 
 class TestPluginSystem:

@@ -17,6 +17,12 @@ Generate round report and metrics
 - round_reports
 - round_history
 
+## Allowed Tools
+- (none)
+
+## Failure Types
+- report_failed
+
 ## Failure Handling
 On failure, log warning and continue with conservative defaults.
 

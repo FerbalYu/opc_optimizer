@@ -19,6 +19,11 @@ def test_runtime_overview_markup_exists():
     assert 'id="overview-files"' in html
     assert 'id="overview-errors"' in html
     assert 'id="overview-recent"' in html
+    assert 'id="agent-loop-panel"' in html
+    assert 'id="tool-call-list"' in html
+    assert "当前子 Agent" in html
+    assert "技能链" in html
+    assert "回退原因" in html
     assert 'id="tab-insights"' in html
     assert 'id="insight-panel"' in html
     assert "工作流概览" in html
@@ -40,6 +45,8 @@ def test_runtime_overview_styles_exist():
     assert ".node-state-cell.done" in html
     assert ".node-state-cell.error" in html
     assert ".overview-risk.error" in html
+    assert ".agent-loop-step.active" in html
+    assert ".tool-call-line.error" in html
     assert ".file-wall" in html
     assert ".value-curve" in html
     assert ".prompt-check" in html
@@ -53,12 +60,19 @@ def test_runtime_overview_event_hooks_exist():
     assert "function setNodeVisualState(nodeName, status)" in html
     assert "function resetNodeVisualState()" in html
     assert "function addOverviewEvent(label, detail = '')" in html
+    assert "function setAgentLoopState(data = {})" in html
+    assert "function appendToolCall(data = {})" in html
+    assert "function renderAgentLoop()" in html
     assert "function upsertRoundInsight(insight)" in html
     assert "function renderInsights()" in html
     assert "function renderInsight3D(insight)" in html
     assert "function clearInsight3D()" in html
     assert "const VISUAL_COMPANION = UI_MODE === 'visual'" in html
     assert "case 'round_insight':" in html
+    assert "case 'agent_step':" in html
+    assert "case 'tool_call_start':" in html
+    assert "case 'tool_call_complete':" in html
+    assert "case 'skill_chain_update':" in html
     assert "renderInsight3D(roundInsights[roundInsights.length - 1])" in html
     assert "setNodeVisualState(data.node, 'running')" in html
     assert "setNodeVisualState(data.node, 'done')" in html

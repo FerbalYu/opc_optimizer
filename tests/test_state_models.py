@@ -22,8 +22,13 @@ class TestOptimizerStateModel:
         assert state.dry_run is False
         assert state.run_mode == "legacy_mode"
         assert state.skill_name == "legacy_pipeline"
+        assert state.skill_chain == []
+        assert state.active_agent == ""
+        assert state.tool_calls == []
+        assert state.agent_loop_step == "think"
         assert state.router_decision == "legacy_linear"
         assert state.failure_type == "none"
+        assert state.fallback_reason == ""
         assert state.session_id == ""
         assert state.round_id == ""
         assert state.skill_preamble == ""
@@ -68,6 +73,13 @@ class TestOptimizerStateModel:
 
         state = OptimizerStateModel(run_mode="unexpected")
         assert state.run_mode == "legacy_mode"
+
+    def test_agent_loop_step_validation(self):
+        state = OptimizerStateModel(agent_loop_step="act")
+        assert state.agent_loop_step == "act"
+
+        state = OptimizerStateModel(agent_loop_step="invalid")
+        assert state.agent_loop_step == "think"
 
     def test_to_dict(self):
         """Test conversion to dictionary."""

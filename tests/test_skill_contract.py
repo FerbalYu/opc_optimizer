@@ -10,6 +10,8 @@ def test_get_skill_contract_plan():
     assert contract.name == "plan"
     assert "project_path" in contract.required_inputs
     assert "current_plan" in contract.expected_outputs
+    assert "context7_docs" in contract.allowed_tools
+    assert "skill_dispatch_failed" in contract.failure_types
 
 
 def test_validate_skill_input_missing_keys_raises():

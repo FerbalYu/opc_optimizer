@@ -218,6 +218,50 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.agent-loop-panel {
+  margin-top: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 8px;
+  background: rgba(22,27,34,0.74);
+}
+.agent-loop-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.agent-loop-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+.agent-loop-step {
+  min-height: 24px;
+  border-radius: 5px;
+  border: 1px solid rgba(139,148,158,0.25);
+  color: var(--text-secondary);
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.agent-loop-step.active {
+  color: var(--accent-blue);
+  border-color: rgba(88,166,255,0.55);
+  background: rgba(88,166,255,0.14);
+}
+.agent-meta-line,
+.tool-call-line {
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tool-call-line.ok { color: var(--accent-green); }
+.tool-call-line.error { color: var(--accent-red); }
 .overview-event strong { color: var(--text-primary); }
 
 /* Task Strip */
@@ -801,6 +845,19 @@ body {
           <div class="metric-value" id="overview-errors">0</div>
           <div class="metric-label">错误</div>
         </div>
+      </div>
+      <div id="agent-loop-panel" class="agent-loop-panel" aria-label="Agent Loop 状态">
+        <div class="agent-loop-title">Agent Loop</div>
+        <div class="agent-loop-steps">
+          <div id="agent-step-think" class="agent-loop-step">思考</div>
+          <div id="agent-step-act" class="agent-loop-step">行动</div>
+          <div id="agent-step-observe" class="agent-loop-step">观察</div>
+          <div id="agent-step-reflect" class="agent-loop-step">再思考</div>
+        </div>
+        <div id="agent-current" class="agent-meta-line">当前子 Agent：-</div>
+        <div id="agent-skill-chain" class="agent-meta-line">技能链：-</div>
+        <div id="agent-fallback" class="agent-meta-line">回退原因：-</div>
+        <div id="tool-call-list" aria-label="工具调用列表"></div>
       </div>
       <div id="overview-recent"></div>
     </div>
@@ -1675,6 +1732,11 @@ const visualState = {
   errors: 0,
   changedFiles: 0,
   recent: [],
+  agentStep: 'think',
+  activeAgent: '',
+  skillChain: [],
+  fallbackReason: '',
+  toolCalls: [],
 };
 
 function initWorkflowOverview() {
@@ -1720,6 +1782,52 @@ function addOverviewEvent(label, detail = '') {
   renderWorkflowOverview();
 }
 
+function setAgentLoopState(data = {}) {
+  visualState.agentStep = data.step || visualState.agentStep || 'think';
+  visualState.activeAgent = data.agent || visualState.activeAgent || '';
+  visualState.skillChain = data.skill_chain || visualState.skillChain || [];
+  visualState.fallbackReason = data.fallback_reason || visualState.fallbackReason || '';
+  renderAgentLoop();
+}
+
+function appendToolCall(data = {}) {
+  const item = {
+    tool: data.tool || 'unknown',
+    ok: data.ok,
+    elapsed: data.elapsed,
+    error_type: data.error_type || '',
+    output_summary: data.output_summary || '',
+  };
+  visualState.toolCalls.unshift(item);
+  visualState.toolCalls = visualState.toolCalls.slice(0, 5);
+  renderAgentLoop();
+}
+
+function renderAgentLoop() {
+  const steps = ['think', 'act', 'observe', 'reflect'];
+  for (const step of steps) {
+    const el = document.getElementById(`agent-step-${step}`);
+    if (el) el.classList.toggle('active', visualState.agentStep === step);
+  }
+  const currentEl = document.getElementById('agent-current');
+  const chainEl = document.getElementById('agent-skill-chain');
+  const fallbackEl = document.getElementById('agent-fallback');
+  const callsEl = document.getElementById('tool-call-list');
+  if (currentEl) currentEl.textContent = `当前子 Agent：${visualState.activeAgent || '-'}`;
+  if (chainEl) chainEl.textContent = `技能链：${(visualState.skillChain || []).join(' → ') || '-'}`;
+  if (fallbackEl) fallbackEl.textContent = `回退原因：${visualState.fallbackReason || '-'}`;
+  if (callsEl) {
+    callsEl.innerHTML = visualState.toolCalls.length
+      ? visualState.toolCalls.map(call => {
+          const cls = call.ok === false ? 'error' : 'ok';
+          const status = call.ok === false ? '失败' : '完成';
+          const elapsed = call.elapsed ? ` ${call.elapsed}s` : '';
+          return `<div class="tool-call-line ${cls}">${escHtml(call.tool)} ${status}${escHtml(elapsed)} ${escHtml(call.error_type || call.output_summary || '')}</div>`;
+        }).join('')
+      : '<div class="tool-call-line">暂无工具调用</div>';
+  }
+}
+
 function renderWorkflowOverview() {
   const roundEl = document.getElementById('overview-round');
   const filesEl = document.getElementById('overview-files');
@@ -1746,6 +1854,7 @@ function renderWorkflowOverview() {
       ? visualState.recent.map(item => `<div class="overview-event"><strong>${escHtml(item.stamp)}</strong> ${escHtml(item.label)} ${escHtml(item.detail)}</div>`).join('')
       : '<div class="overview-event">Waiting for workflow events.</div>';
   }
+  renderAgentLoop();
 }
 
 function addLog(text, cls = 'info') {
@@ -2619,6 +2728,8 @@ function handleEvent(msg) {
       currentRoundDiffs = 0;
       visualState.errors = 0;
       visualState.changedFiles = 0;
+      visualState.toolCalls = [];
+      visualState.fallbackReason = '';
       resetNodeVisualState();
       document.getElementById('stat-round').textContent = `#${data.round || '?'}`;
       addOverviewEvent('轮次开始', `#${data.round || '?'}`);
@@ -2651,6 +2762,35 @@ function handleEvent(msg) {
       
     case 'cost_update':
       if (data.calls) document.getElementById('stat-calls').textContent = data.calls;
+      break;
+
+    case 'agent_step':
+      setAgentLoopState(data);
+      addOverviewEvent('Agent', `${data.agent || '-'} / ${data.step || '-'}`);
+      renderWorkflowOverview();
+      break;
+
+    case 'skill_chain_update':
+      visualState.skillChain = data.skill_chain || [];
+      visualState.fallbackReason = data.fallback_reason || '';
+      addOverviewEvent('技能链', visualState.skillChain.join(' → ') || '-');
+      renderWorkflowOverview();
+      break;
+
+    case 'tool_call_start':
+      visualState.activeAgent = data.agent || visualState.activeAgent;
+      setAgentLoopState({ step: 'act', agent: visualState.activeAgent });
+      addOverviewEvent('工具开始', data.tool || '');
+      addLog(`🔧 工具开始：${data.tool || 'unknown'}`, 'info');
+      break;
+
+    case 'tool_call_complete':
+      appendToolCall(data);
+      setAgentLoopState({ step: 'observe' });
+      if (data.ok === false) visualState.errors++;
+      addOverviewEvent('工具完成', `${data.tool || ''} ${data.ok === false ? '失败' : '完成'}`);
+      renderWorkflowOverview();
+      addLog(`🔧 工具完成：${data.tool || 'unknown'} (${data.ok === false ? '失败' : '通过'})`, data.ok === false ? 'node-error' : 'node-complete');
       break;
       
     case 'news_data':

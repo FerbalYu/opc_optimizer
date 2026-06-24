@@ -23,6 +23,9 @@ from ui.web_server import (
     _fetch_news_sync,
     _ws_handler,
     start_server,
+    add_event_sink,
+    remove_event_sink,
+    submit_user_command,
 )
 import ui.web_server as ws_mod
 
@@ -77,6 +80,20 @@ class TestEmit:
             emit("test_event")       # Should not raise
         finally:
             ws_mod._loop = original_loop
+
+    def test_emit_forwards_to_in_process_event_sink(self):
+        captured = []
+
+        def sink(event_type, data):
+            captured.append((event_type, data))
+
+        add_event_sink(sink)
+        try:
+            emit("node_start", {"node": "plan"})
+        finally:
+            remove_event_sink(sink)
+
+        assert captured == [("node_start", {"node": "plan"})]
 
 
 # ─── Broadcast Tests ─────────────────────────────────────────────
@@ -293,6 +310,19 @@ class TestWaitForConfig:
             ws_mod._optimizer_config.clear()
             ws_mod._optimizer_config.update(original_config)
             ws_mod._optimizer_ready = original_event
+
+    def test_submit_user_command_unblocks_wait(self):
+        original_event = ws_mod._user_command_event
+        ws_mod._user_command_event = threading.Event()
+
+        try:
+            threading.Timer(
+                0.01, lambda: submit_user_command({"action": "continue"})
+            ).start()
+            result = ws_mod.wait_for_user_command(timeout=0.1)
+            assert result == {"action": "continue"}
+        finally:
+            ws_mod._user_command_event = original_event
 
 
 # ─── News Fetch Tests ────────────────────────────────────────────

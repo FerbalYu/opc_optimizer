@@ -141,6 +141,11 @@ class TestTestNodeIntegration:
 
         assert result["suggestions"] != ""
         assert "Suggestions" in result["suggestions"]
+        assert [call["tool_name"] for call in result["tool_calls"][:3]] == [
+            "build_check",
+            "test_check",
+            "ui_check",
+        ]
         suggestions_path = os.path.join(str(tmp_project), ".opclog", "suggestions.md")
         assert os.path.exists(suggestions_path)
 

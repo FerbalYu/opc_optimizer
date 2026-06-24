@@ -18,7 +18,9 @@ dry_run: false
 auto: false
 
 # LLM 模型名称 (litellm 格式)
-# model: "openai/gpt-4o"
+# 默认是 MiniMax-M3；若 OPENAI_API_BASE=https://api.minimaxi.com/v1
+# 也可不显式设置 model 项，直接走默认。
+# model: "MiniMax-M3"
 
 # LLM 调用超时 (秒)
 timeout: 120

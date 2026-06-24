@@ -134,6 +134,7 @@ class TestExecuteIntegration:
 
         result = execute_node(state)
         assert result["code_diff"] == "No changes parsed from LLM output."
+        assert result["tool_calls"][0]["tool_name"] == "context7_docs"
         prompt = mock_instance.call_log[0]["messages"][1]["content"]
         assert "相关框架/库文档依据" in prompt
         assert "Use ref() correctly." in prompt

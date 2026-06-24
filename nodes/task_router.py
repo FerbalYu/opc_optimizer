@@ -96,11 +96,15 @@ def task_router_node(state: OptimizerState) -> OptimizerState:
             failure_type=state.get("failure_type", "none"),
         )
         state["run_mode"] = route_plan.mode
+        state["skill_chain"] = list(route_plan.skill_chain)
+        state["fallback_reason"] = route_plan.fallback_reason
         router_decision = route_plan.router_decision
     except Exception as exc:
         logger.warning("Skill router failed, fallback to legacy_mode: %s", exc)
         state["run_mode"] = "legacy_mode"
         state["failure_type"] = "router_failed"
+        state["fallback_reason"] = f"skill_router_failed:{type(exc).__name__}"
+        state["skill_chain"] = ["plan", "execute", "test", "report"]
         router_decision = f"skill_router:fallback_legacy({type(exc).__name__})"
 
     state["skill_name"] = (
@@ -109,6 +113,7 @@ def task_router_node(state: OptimizerState) -> OptimizerState:
         else "legacy_pipeline"
     )
     state["router_decision"] = router_decision
+    state.setdefault("skill_chain", ["plan", "execute", "test", "report"])
 
     logger.info(
         f"Round {current_round}: complexity={complexity}, fast_path={fast_path} "
@@ -122,6 +127,13 @@ def task_router_node(state: OptimizerState) -> OptimizerState:
             "complexity": complexity,
             "fast_path": fast_path,
             "goal": goal[:120],
+        })
+        emit("skill_chain_update", {
+            "round": current_round,
+            "run_mode": state.get("run_mode", "legacy_mode"),
+            "skill_chain": state.get("skill_chain", []),
+            "router_decision": router_decision,
+            "fallback_reason": state.get("fallback_reason", ""),
         })
     except Exception:
         pass

@@ -21,3 +21,10 @@ def test_resolve_web_ui_ports_skips_occupied_default_pair(monkeypatch):
 
     monkeypatch.setattr(main_mod, "_port_is_available", fake_available)
     assert main_mod._resolve_web_ui_ports(8765, max_attempts=3) == (8767, 8768)
+
+
+def test_desktop_allows_standalone_startup(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["opc", "--desktop"])
+    args = main_mod.parse_args()
+    assert args.desktop is True
+    assert args.project_path is None

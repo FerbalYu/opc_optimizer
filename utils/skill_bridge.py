@@ -62,6 +62,14 @@ def run_skill(
 
     validate_skill_input(skill_name, state)
     state["skill_name"] = skill_name
+    state["active_agent"] = skill_name
+    state["agent_loop_step"] = {
+        "plan": "think",
+        "execute": "act",
+        "test": "observe",
+        "interact": "reflect",
+        "report": "reflect",
+    }.get(skill_name, "think")
     output_state = active_handlers[skill_name](state)
     validate_skill_output(skill_name, output_state)
     return output_state

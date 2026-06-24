@@ -6,7 +6,16 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import graph as graph_mod
-from graph import _build_skill_dispatcher, create_optimizer_graph
+from graph import (
+    _build_skill_dispatcher,
+    _first_skill_node,
+    _route_after_archive,
+    _route_after_execute,
+    _route_after_interact,
+    _route_after_plan,
+    create_optimizer_graph,
+    should_test,
+)
 from utils.skill_registry import SkillRegistry, SkillSpec
 
 
@@ -28,19 +37,19 @@ class TestGraphCompilation:
     def test_graph_wires_full_round_chain(self):
         app = create_optimizer_graph()
         edges = {
-            (edge.source, edge.target, edge.data, edge.conditional)
+            (edge.source, edge.target, edge.conditional)
             for edge in app.get_graph().edges
         }
 
-        assert ("task_router", "plan", None, False) in edges
-        assert ("plan", "execute", None, False) in edges
-        assert ("execute", "test", "run_test", True) in edges
-        assert ("execute", "archive", "skip_test", True) in edges
-        assert ("test", "archive", None, False) in edges
-        assert ("archive", "report", None, False) in edges
-        assert ("report", "interact", None, False) in edges
-        assert ("interact", "plan", "continue", True) in edges
-        assert ("plan", "__end__", None, False) not in edges
+        assert ("task_router", "plan", True) in edges
+        assert ("plan", "execute", True) in edges
+        assert ("execute", "test", True) in edges
+        assert ("execute", "archive", True) in edges
+        assert ("test", "archive", False) in edges
+        assert ("archive", "report", True) in edges
+        assert ("report", "interact", True) in edges
+        assert ("interact", "plan", True) in edges
+        assert ("plan", "__end__", False) not in edges
 
     def test_graph_requires_core_skill_registration(self):
         registry = SkillRegistry()
@@ -136,4 +145,55 @@ class TestSkillDispatcher:
         assert result["legacy_called"] is True
         assert result["run_mode"] == "legacy_mode"
         assert result["failure_type"] == "skill_dispatch_failed"
+        assert result["fallback_reason"].startswith("skill_dispatch_failed:execute")
         assert "fallback_legacy" in result["router_decision"]
+
+
+def test_should_test_respects_skill_chain_skip():
+    state = {
+        "run_mode": "skill_mode",
+        "skill_chain": ["plan", "execute", "report"],
+        "fast_path": False,
+    }
+
+    assert should_test(state) == "skip_test"
+
+
+def test_skill_chain_routes_doc_only_path_through_archive():
+    state = {
+        "run_mode": "skill_mode",
+        "skill_chain": ["plan", "execute", "report"],
+        "fast_path": False,
+    }
+
+    assert _first_skill_node(state) == "plan"
+    assert _route_after_plan(state) == "execute"
+    assert _route_after_execute(state) == "archive"
+    assert _route_after_archive(state) == "report"
+
+
+def test_skill_chain_can_start_from_execute():
+    state = {
+        "run_mode": "skill_mode",
+        "skill_chain": ["execute", "report"],
+        "fast_path": False,
+    }
+
+    assert _first_skill_node(state) == "execute"
+    assert _route_after_execute(state) == "archive"
+    assert _route_after_archive(state) == "report"
+
+
+def test_legacy_route_ignores_skill_chain_override():
+    state = {
+        "run_mode": "legacy_mode",
+        "skill_chain": ["report"],
+        "fast_path": False,
+        "should_stop": False,
+    }
+
+    assert _first_skill_node(state) == "plan"
+    assert _route_after_plan(state) == "execute"
+    assert _route_after_execute(state) == "test"
+    assert _route_after_archive(state) == "report"
+    assert _route_after_interact(state) == "plan"

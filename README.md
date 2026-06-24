@@ -116,8 +116,9 @@ pip install -r requirements.txt
 
 ```ini
 OPENAI_API_KEY=your_api_key_here
-OPENAI_API_BASE=https://api.minimaxi.com/v1   # 或任何兼容 OpenAI 格式的接口
-DEFAULT_LLM_MODEL=MiniMax-M2.7
+OPENAI_API_BASE=https://api.minimaxi.com/v1   # MiniMax 兼容 OpenAI 格式的接口
+# DEFAULT_LLM_MODEL 可省略：默认就是 MiniMax-M3
+# DEFAULT_LLM_MODEL=MiniMax-M3
 ```
 
 ---
@@ -140,6 +141,9 @@ python main.py D:\your-project --goal "分析" --dry-run
 # 启动 Web UI（浏览器端配置并运行）
 python main.py --web-ui
 
+# 启动 Desktop 版（PySide6 + QWebEngineView + QWebChannel）
+python main.py --desktop
+
 # 指定端口
 python main.py --web-ui --http-port 8765
 
@@ -160,7 +164,7 @@ python main.py D:\your-project --goal "优化" --no-format    # 禁用自动格�
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `project_path` | — | 目标项目绝对路径（`--web-ui` 独立模式时可省略）|
+| `project_path` | — | 目标项目绝对路径（`--web-ui` / `--desktop` 独立模式时可省略）|
 | `--goal` | `"Improve code quality..."` | 优化目标描述 |
 | `--max-rounds` | `5` | 最大优化轮数 |
 | `--archive-every` | `3` | 每 N 轮归档一次历史 |
@@ -173,6 +177,7 @@ python main.py D:\your-project --goal "优化" --no-format    # 禁用自动格�
 | `--test-model` | — | 测试节点专用模型 |
 | `--timeout` | `120` | LLM 调用超时（秒）|
 | `--web-ui` | false | 启动 Web UI 看板 |
+| `--desktop` | false | 启动 PySide6 Desktop 版窗口 |
 | `--http-port` | `8765` | Web UI HTTP 端口（WS 端口 = HTTP + 1）|
 | `--formatter` | 自动检测 | 显式指定格式化命令 |
 | `--no-format` | false | 禁用写入后自动格式化 |
@@ -192,6 +197,27 @@ CLI 参数 > 项目 opc.config.yaml > 全局 ~/.opc/config.yaml > 默认值
 ---
 
 ## Web UI 审核流
+
+## Desktop 版
+
+Desktop 版使用 PySide6 原生窗口承载专用 WebView 页面：
+
+- `QWebEngineView` 加载 `ui/desktop/web/index.html`。
+- 页面内使用本地 `three.module.js` 渲染 3D 看板。
+- JavaScript 通过 `QWebChannel` 调用 Python `DesktopBridge`，不使用 WebSocket。
+- Python 侧复用现有 LangGraph optimizer 和事件 payload。
+
+安装桌面依赖：
+
+```bash
+pip install -r requirements-desktop.txt
+```
+
+构建 Windows 便携目录版：
+
+```bash
+python scripts/build_desktop_portable.py
+```
 
 启动时若不带 `project_path` 则进入 landing 配置页，可在浏览器中填写项目路径、目标、轮数及模型。
 

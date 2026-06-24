@@ -56,8 +56,13 @@ class OptimizerStateModel(BaseModel):
     dry_run: bool = False
     run_mode: str = "legacy_mode"
     skill_name: str = "legacy_pipeline"
+    skill_chain: List[str] = Field(default_factory=list)
+    active_agent: str = ""
+    tool_calls: List[dict] = Field(default_factory=list)
+    agent_loop_step: str = "think"
     router_decision: str = "legacy_linear"
     failure_type: str = "none"
+    fallback_reason: str = ""
     session_id: str = ""
     round_id: str = ""
     skill_preamble: str = ""
@@ -86,6 +91,13 @@ class OptimizerStateModel(BaseModel):
     def validate_run_mode(cls, v: str) -> str:
         if v not in ("legacy_mode", "skill_mode"):
             return "legacy_mode"
+        return v
+
+    @field_validator("agent_loop_step")
+    @classmethod
+    def validate_agent_loop_step(cls, v: str) -> str:
+        if v not in ("think", "act", "observe", "reflect"):
+            return "think"
         return v
 
     @field_validator(
@@ -172,8 +184,13 @@ class OptimizerState(TypedDict):
     dry_run: bool
     run_mode: str
     skill_name: str
+    skill_chain: List[str]
+    active_agent: str
+    tool_calls: List[dict]
+    agent_loop_step: str
     router_decision: str
     failure_type: str
+    fallback_reason: str
     session_id: str
     round_id: str
     skill_preamble: str

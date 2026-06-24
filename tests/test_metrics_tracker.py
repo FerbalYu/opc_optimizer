@@ -46,8 +46,12 @@ class TestCollectRoundMetrics:
         assert metrics["round"] == 1
         assert "timestamp" in metrics
         assert metrics["skill_name"] == "legacy_pipeline"
+        assert metrics["skill_chain"] == []
+        assert metrics["active_agent"] == ""
         assert metrics["router_decision"] == "legacy_linear"
         assert metrics["failure_type"] == "none"
+        assert metrics["fallback_reason"] == ""
+        assert metrics["tool_calls_count"] == 0
         assert metrics["value_score"] == 7
         assert metrics["build_passed"] is True
         assert metrics["test_passed"] is True
