@@ -189,6 +189,20 @@ class TestRunSandboxed:
         result = _run_sandboxed(["python", "--version"], str(tmp_path), label="py-ver")
         assert "exit_code=0" in result
 
+    def test_utf8_output_does_not_crash_on_windows_locale(self, tmp_path):
+        result = _run_sandboxed(
+            [
+                "python",
+                "-c",
+                "import sys; sys.stdout.buffer.write('✔ 中文'.encode('utf-8'))",
+            ],
+            str(tmp_path),
+            label="utf8",
+        )
+
+        assert "exit_code=0" in result
+        assert "中文" in result
+
     def test_command_not_found(self, tmp_path):
         """Command that doesn't exist on PATH."""
         result = _run_sandboxed(

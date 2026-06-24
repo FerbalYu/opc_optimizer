@@ -94,6 +94,8 @@ def _run_sandboxed(
         "cwd": cwd,
         "capture_output": True,
         "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
         "timeout": timeout,
         "env": safe_env,
     }
@@ -249,6 +251,8 @@ def _start_dev_server(cmd: List[str], cwd: str):
         "stdout": subprocess.PIPE,
         "stderr": subprocess.PIPE,
         "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
         "env": _build_safe_env(),
     }
     if os.name == "nt":

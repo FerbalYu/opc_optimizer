@@ -48,12 +48,29 @@ class TestDetectProjectProfile:
     def test_detect_js_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "package.json"), "w") as f:
-                json.dump({"name": "test", "dependencies": {"express": "1.0"}}, f)
+                json.dump(
+                    {
+                        "name": "test",
+                        "dependencies": {"express": "1.0"},
+                        "scripts": {"test": "node --test", "build": "vite build", "dev": "vite"},
+                    },
+                    f,
+                )
             profile = detect_project_profile(tmpdir)
             assert profile["type"] == "javascript"
             assert ".js" in profile["scan_extensions"]
             assert profile["build_cmd"] == "npm run build"
             assert profile["dev_cmd"] == "npm run dev"
+
+    def test_detect_js_project_without_build_script_skips_build(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "package.json"), "w") as f:
+                json.dump({"name": "test", "scripts": {"test": "node --test"}}, f)
+            profile = detect_project_profile(tmpdir)
+            assert profile["type"] == "javascript"
+            assert profile["test_cmd"] == "npm test"
+            assert profile["build_cmd"] is None
+            assert profile["dev_cmd"] is None
 
     def test_detect_go_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -88,7 +105,14 @@ class TestDetectProjectProfile:
     def test_detect_vue_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "package.json"), "w") as f:
-                json.dump({"name": "vue-app", "dependencies": {"vue": "^3.0"}}, f)
+                json.dump(
+                    {
+                        "name": "vue-app",
+                        "dependencies": {"vue": "^3.0"},
+                        "scripts": {"dev": "vite", "build": "vite build", "test": "vitest"},
+                    },
+                    f,
+                )
             with open(os.path.join(tmpdir, "vite.config.ts"), "w") as f:
                 f.write("export default {}\n")
             profile = detect_project_profile(tmpdir)
@@ -100,7 +124,14 @@ class TestDetectProjectProfile:
     def test_detect_react_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "package.json"), "w") as f:
-                json.dump({"name": "react-app", "dependencies": {"react": "^18"}}, f)
+                json.dump(
+                    {
+                        "name": "react-app",
+                        "dependencies": {"react": "^18"},
+                        "scripts": {"dev": "vite", "build": "vite build", "test": "vitest"},
+                    },
+                    f,
+                )
             profile = detect_project_profile(tmpdir)
             assert profile["type"] == "react"
             assert profile["dev_cmd"] == "npm run dev"

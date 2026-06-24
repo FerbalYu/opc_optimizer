@@ -27,6 +27,25 @@ def test_package_graph_import_from_parent_directory():
     assert "ok" in result.stdout
 
 
+def test_package_import_does_not_eagerly_load_litellm():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import opc_optimizer; print('litellm' in sys.modules)",
+        ],
+        cwd=PACKAGE_PARENT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "False"
+
+
 def test_python_m_opc_optimizer_help_from_parent_directory():
     result = subprocess.run(
         [sys.executable, "-m", "opc_optimizer", "--help"],

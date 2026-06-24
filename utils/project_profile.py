@@ -210,6 +210,18 @@ def _package_json_has(project_path: str, dep_keyword: str) -> bool:
         return False
 
 
+def _package_json_script(project_path: str, name: str) -> bool:
+    pkg_path = os.path.join(project_path, "package.json")
+    if not os.path.exists(pkg_path):
+        return False
+    try:
+        with open(pkg_path, "r", encoding="utf-8") as f:
+            package = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    return bool(package.get("scripts", {}).get(name))
+
+
 def _compute_root_hash(project_path: str) -> str:
     """Compute a hash of root-level filenames for cache invalidation."""
     try:
@@ -320,6 +332,10 @@ def _match_rules(project_path: str) -> Optional[Dict[str, Any]]:
             "optimization_hints": rule.get("optimization_hints", []),
             "detected_by": "rules",
         }
+        if ptype in {"javascript", "vue", "react"}:
+            profile["test_cmd"] = "npm test" if _package_json_script(project_path, "test") else None
+            profile["build_cmd"] = "npm run build" if _package_json_script(project_path, "build") else None
+            profile["dev_cmd"] = "npm run dev" if _package_json_script(project_path, "dev") else None
         logger.info(f"Rule-table match: {ptype}")
         return profile
 

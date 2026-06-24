@@ -15,7 +15,7 @@ logger = logging.getLogger("opc.code_reviewer")
 SUSPICIOUS_PATTERNS: List[Tuple[re.Pattern, str, str]] = [
     # ── Arbitrary code execution ──
     (re.compile(r'\beval\s*\('), "eval() — arbitrary code execution", "block"),
-    (re.compile(r'\bexec\s*\('), "exec() — arbitrary code execution", "block"),
+    (re.compile(r'(?<!\.)\bexec\s*\('), "exec() — arbitrary code execution", "block"),
     (re.compile(r'\b__import__\s*\('), "__import__() — dynamic import", "block"),
     (re.compile(r'\bcompile\s*\(.+["\']exec["\']\s*\)'), "compile(…, 'exec') — code compilation", "block"),
 

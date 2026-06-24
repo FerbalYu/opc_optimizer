@@ -26,6 +26,11 @@ class TestCodeReviewer:
         assert not is_safe
         assert any("exec()" in i for i in issues)
 
+    def test_allows_javascript_regex_exec_method(self):
+        is_safe, issues = self.reviewer.review("while ((m = re.exec(text)) !== null) {}")
+        assert is_safe
+        assert issues == []
+
     def test_blocks_os_system(self):
         is_safe, issues = self.reviewer.review('os.system("rm -rf /")')
         assert not is_safe
